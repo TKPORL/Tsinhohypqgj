@@ -18,7 +18,7 @@ def get_image_dir(source):
     return dir_path
 
 def get_image_filename(url, source):
-    """生成图片文件名"""
+    """生成纯ASCII图片文件名（用URL的MD5 hash）"""
     ext = ".jpg"
     if ".png" in url:
         ext = ".png"
@@ -27,8 +27,8 @@ def get_image_filename(url, source):
     elif ".webp" in url:
         ext = ".webp"
 
-    url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
-    return f"{source}_{url_hash}{ext}"
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
+    return f"{url_hash}{ext}"
 
 def download_image(url, source, proxy=None, timeout=30):
     """下载单张图片，返回本地路径"""

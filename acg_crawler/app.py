@@ -118,7 +118,7 @@ def api_posts_grouped():
                 WHEN '萌幻ACG' THEN 4
                 ELSE 5
             END),
-            id DESC"""
+            likes DESC"""
         rows = conn.execute(query, params).fetchall()
 
         groups = {}
@@ -211,6 +211,14 @@ def api_export():
     posts = get_posts(limit=10000)
     result = export_posts(posts)
     return jsonify({"status": "ok", "files": result})
+
+@app.route("/api/export_counts")
+def api_export_counts():
+    """返回各平台导出数量"""
+    pc = get_post_count(platform="pc")
+    android = get_post_count(platform="android")
+    mixed = get_post_count(platform="pc_android")
+    return jsonify({"pc": pc, "android": android, "mixed": mixed})
 
 @app.route("/api/export_download")
 def api_export_download():

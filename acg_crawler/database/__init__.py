@@ -120,7 +120,7 @@ def get_posts(platform=None, source=None, limit=100, offset=0):
                 WHEN '萌幻ACG' THEN 4
                 ELSE 5
             END),
-            id DESC
+            likes DESC
             LIMIT ? OFFSET ?"""
         params.extend([limit, offset])
         return [dict(row) for row in conn.execute(query, params).fetchall()]

@@ -116,12 +116,12 @@
                             <option value="ACG图书馆">ACG图书馆</option>
                             <option value="ACG俱乐部">ACG俱乐部</option>
                         </select>
-                        <select id="filterPlatform">
-                            <option value="all">全部平台</option>
-                            <option value="pc">仅PC</option>
-                            <option value="pc_android">仅PC+安卓</option>
-                            <option value="android">仅安卓</option>
-                        </select>
+                        <div class="platform-tabs" id="platformTabs">
+                            <button class="plat-tab active" data-plat="all" onclick="switchPlatTab(this)">全部</button>
+                            <button class="plat-tab" data-plat="pc" onclick="switchPlatTab(this)">PC</button>
+                            <button class="plat-tab" data-plat="pc_android" onclick="switchPlatTab(this)">PC+安卓</button>
+                            <button class="plat-tab" data-plat="android" onclick="switchPlatTab(this)">安卓</button>
+                        </div>
                         <span class="result-count">共 <strong id="resultCount">0</strong> 条</span>
                     </div>
                 </div>
@@ -174,18 +174,21 @@
                         <div class="export-icon">PC</div>
                         <h3>PC下载.html</h3>
                         <p>仅包含PC平台的游戏资源</p>
+                        <div class="export-count"><strong id="countPc">0</strong> 条</div>
                         <button class="btn btn-primary" onclick="doExport('pc')">下载 PC下载.html</button>
                     </div>
                     <div class="export-card">
                         <div class="export-icon">安卓</div>
                         <h3>仅安卓.html</h3>
                         <p>仅包含安卓平台的游戏资源</p>
+                        <div class="export-count"><strong id="countAndroid">0</strong> 条</div>
                         <button class="btn btn-primary" onclick="doExport('android')">下载 仅安卓.html</button>
                     </div>
                     <div class="export-card">
                         <div class="export-icon">PC+安卓</div>
                         <h3>PC+安卓下载.html</h3>
                         <p>包含PC和安卓双平台的游戏资源</p>
+                        <div class="export-count"><strong id="countMixed">0</strong> 条</div>
                         <button class="btn btn-primary" onclick="doExport('mixed')">下载 PC+安卓下载.html</button>
                     </div>
                 </div>

@@ -137,20 +137,26 @@ document.addEventListener("DOMContentLoaded", function() {
     function loadPosts() {
         selectedIds.clear();
         updateBatchBar();
-        const source = document.getElementById("filterSource").value;
-        const platform = document.getElementById("filterPlatform").value;
-        fetch(`/api/posts_grouped?source=${source}&platform=${platform}`)
-            .then(r => r.json())
-            .then(data => {
-                let totalPosts = 0;
-                data.groups.forEach(g => totalPosts += g.total);
+        var source = document.getElementById("filterSource").value;
+        var platTab = document.querySelector(".plat-tab.active");
+        var platform = platTab ? platTab.dataset.plat : "all";
+        fetch("/api/posts_grouped?source=" + source + "&platform=" + platform)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var totalPosts = 0;
+                data.groups.forEach(function(g) { totalPosts += g.total; });
                 document.getElementById("resultCount").textContent = totalPosts;
                 renderGroups(data.groups);
             });
     }
 
     document.getElementById("filterSource").addEventListener("change", loadPosts);
-    document.getElementById("filterPlatform").addEventListener("change", loadPosts);
+
+    window.switchPlatTab = function(btn) {
+        document.querySelectorAll(".plat-tab").forEach(function(b) { b.classList.remove("active"); });
+        btn.classList.add("active");
+        loadPosts();
+    };
 
     function renderGroups(groups) {
         const container = document.getElementById("groupedResults");
@@ -251,12 +257,14 @@ document.addEventListener("DOMContentLoaded", function() {
             footerHtml += '</div></div>';
         }
 
+        var displayTitle = post.title.replace(/【([^】]*)\/([^】]*)】/g, '【$1 $2】');
+
         var statsHtml = '';
         if (post.source !== '萌幻ACG') {
             statsHtml = '<div class="card-stats"><span class="stat-item">❤ ' + (post.likes || 0) + '</span><span class="stat-item">💬 ' + (post.comments || 0) + '</span><span class="stat-item">👁 ' + formatNumber(post.views || 0) + '</span></div>';
         }
 
-        card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images"><img src="' + image + '" alt="" onerror="this.style.display=\'none\'"></div><div class="card-body"><div class="card-title">' + post.title + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div></div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
+        card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images"><img src="' + image + '" alt="" onerror="this.style.display=\'none\'"></div><div class="card-body"><div class="card-title" onclick="copyTitle(this)" title="点击复制标题">' + displayTitle + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div></div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
         return card;
     }
 
@@ -337,7 +345,17 @@ document.addEventListener("DOMContentLoaded", function() {
                         failed: '<span class="badge badge-error">失败</span>',
                         cancelled: '<span class="badge badge-warning">已取消</span>',
                     }[task.status] || task.status;
-                    tr.innerHTML = '<td>' + task.id + '</td><td>' + (task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期') + '</td><td>' + (task.sites || '') + '</td><td>' + statusBadge + '</td><td>' + task.success_posts + '</td><td>' + task.skipped_posts + '</td><td>' + task.error_posts + '</td><td>' + (task.created_at || '') + '</td><td><button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
+
+                    var dlBtns = '';
+                    if (task.status === 'completed') {
+                        dlBtns = '<div class="history-dl-btns">' +
+                            '<a href="/api/export_download?type=pc" class="btn btn-sm btn-dl" download>PC.html</a>' +
+                            '<a href="/api/export_download?type=android" class="btn btn-sm btn-dl" download>安卓.html</a>' +
+                            '<a href="/api/export_download?type=mixed" class="btn btn-sm btn-dl" download>PC+安卓.html</a>' +
+                            '</div>';
+                    }
+
+                    tr.innerHTML = '<td>' + task.id + '</td><td>' + (task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期') + '</td><td>' + (task.sites || '') + '</td><td>' + statusBadge + '</td><td>' + task.success_posts + '</td><td>' + task.skipped_posts + '</td><td>' + task.error_posts + '</td><td>' + (task.created_at || '') + '</td><td>' + dlBtns + '<button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
                     tbody.appendChild(tr);
                 });
             });
@@ -359,6 +377,14 @@ document.addEventListener("DOMContentLoaded", function() {
             .then(function(data) {
                 document.getElementById("exportTotal").textContent = data.total;
             });
+        // 获取各平台数量
+        fetch("/api/export_counts")
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById("countPc").textContent = data.pc || 0;
+                document.getElementById("countAndroid").textContent = data.android || 0;
+                document.getElementById("countMixed").textContent = data.mixed || 0;
+            });
     }
 
     // 直接下载导出文件
@@ -377,6 +403,20 @@ function copyText(el) {
         setTimeout(function() {
             el.textContent = orig;
             el.disabled = false;
+        }, 800);
+    });
+}
+
+// 复制标题
+function copyTitle(el) {
+    var text = el.textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        el.classList.add("copied-title");
+        var orig = el.textContent;
+        el.textContent = "已复制!";
+        setTimeout(function() {
+            el.classList.remove("copied-title");
+            el.textContent = orig;
         }, 800);
     });
 }

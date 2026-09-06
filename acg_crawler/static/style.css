@@ -361,11 +361,36 @@ input:focus, select:focus {
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-wrap: wrap;
 }
 .result-filters select {
     padding: 6px 10px;
     font-size: 12px;
     border-radius: 5px;
+}
+.platform-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-input);
+    border-radius: 5px;
+    padding: 2px;
+    border: 1px solid var(--border);
+}
+.plat-tab {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+}
+.plat-tab:hover { color: var(--text-primary); }
+.plat-tab.active {
+    background: var(--accent-soft);
+    color: var(--accent);
 }
 .result-count {
     font-size: 12px;
@@ -462,6 +487,13 @@ input:focus, select:focus {
     -webkit-box-orient: vertical;
     overflow: hidden;
     color: var(--text-primary);
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.card-title:hover { color: var(--accent); }
+.card-title.copied-title {
+    color: var(--green);
+    -webkit-line-clamp: unset;
 }
 
 .card-stats {
@@ -559,6 +591,26 @@ input:focus, select:focus {
 }
 .history-table tr:hover { background: var(--bg-card-hover); }
 
+.history-dl-btns {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.btn-dl {
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 500;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid rgba(224,86,160,0.2);
+    border-radius: 3px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.btn-dl:hover { background: var(--accent-glow); }
+
 .badge {
     padding: 3px 8px;
     border-radius: 3px;
@@ -606,7 +658,17 @@ input:focus, select:focus {
     margin-bottom: 12px;
 }
 .export-card h3 { font-size: 14px; margin-bottom: 8px; font-weight: 600; }
-.export-card p { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
+.export-card p { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.export-count {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+.export-count strong {
+    color: var(--accent);
+    font-size: 18px;
+    font-weight: 700;
+}
 
 .help-text {
     font-size: 12px;
