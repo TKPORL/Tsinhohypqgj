@@ -18,10 +18,11 @@ CODE_PATTERNS = [
     r'[?&]pwd=([A-Za-z0-9]{4})',
 ]
 
-CLOUD_NAME_PATTERN = re.compile(
-    r'(?:百度网盘|移动云盘|百度云|移动云)\s*[:：]\s*([A-Za-z0-9]+)',
-    re.IGNORECASE,
-)
+CLOUD_NAME_PATTERNS = [
+    re.compile(r'(?:百度网盘|移动云盘|百度云|移动云)\s*[:：]\s*([A-Za-z0-9]+)', re.IGNORECASE),
+    re.compile(r'文件[名码称]\s*[:：]?\s*([A-Za-z0-9]{4,})', re.IGNORECASE),
+    re.compile(r'(?:链接|下载)\s*[:：]\s*\S+\s+(?:文件名|名称)\s*[:：]?\s*([A-Za-z0-9]{4,})', re.IGNORECASE),
+]
 
 CHEAT_CODE_PATTERN = re.compile(
     r'作弊码[：:\s]*(\S+)',
@@ -98,9 +99,13 @@ def extract_cloud_name(text):
     """从内容中提取网盘文件名（如 C156222）"""
     if not text:
         return ""
-    match = CLOUD_NAME_PATTERN.search(text)
-    if match:
-        return match.group(1).strip()
+    for pattern in CLOUD_NAME_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            name = match.group(1).strip()
+            # 过滤掉明显不是文件名的值
+            if len(name) >= 4 and not name.isdigit():
+                return name
     return ""
 
 

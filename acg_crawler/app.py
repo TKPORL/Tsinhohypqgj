@@ -1,7 +1,9 @@
 """ACG资源聚合爬取工具 - 主程序"""
 import json
+import os
 import threading
 import requests as req_lib
+from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file, Response
 
 from config import load_config
@@ -12,6 +14,8 @@ from generator import export_posts
 app = Flask(__name__)
 config = load_config()
 init_db()
+
+IMAGES_DIR = Path(__file__).parent / "images"
 
 engine = CrawlerEngine(config)
 
@@ -40,6 +44,14 @@ engine.progress_callback = progress_callback
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/images/<path:source>/<path:filename>")
+def serve_image(source, filename):
+    """提供本地下载的图片"""
+    img_path = IMAGES_DIR / source / filename
+    if img_path.exists():
+        return send_file(str(img_path))
+    return "", 404
 
 @app.route("/api/proxy_image")
 def api_proxy_image():
@@ -167,19 +179,24 @@ def api_export_download():
             posts = [dict(row) for row in rows]
     else:
         platform_filter = request.args.get("platform", "")
-        if export_type == "pc":
-            posts = get_posts(platform="pc", limit=10000)
-        elif export_type == "mixed":
-            posts = get_posts(platform="pc_android", limit=10000)
-            pc_posts = get_posts(platform="pc", limit=10000)
-            posts = pc_posts + posts
-        else:
-            posts = get_posts(limit=10000)
+    if export_type == "pc":
+        posts = get_posts(platform="pc", limit=10000)
+    elif export_type == "android":
+        posts = get_posts(platform="android", limit=10000)
+    elif export_type == "mixed":
+        posts = get_posts(platform="pc_android", limit=10000)
+        pc_posts = get_posts(platform="pc", limit=10000)
+        android_posts = get_posts(platform="android", limit=10000)
+        posts = pc_posts + android_posts + posts
+    else:
+        posts = get_posts(limit=10000)
 
     result = export_posts(posts)
 
-    if export_type == "pc" or export_type == "selected":
+    if export_type == "pc":
         filepath = result.get("pc", "")
+    elif export_type == "android":
+        filepath = result.get("android", "")
     else:
         filepath = result.get("mixed", "")
 

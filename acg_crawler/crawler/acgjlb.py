@@ -1,7 +1,9 @@
 """ACG俱乐部爬虫"""
 import re
+from pathlib import Path
 from crawler.base import BaseCrawler
 from parser import extract_links, extract_cloud_name, extract_cheat_code
+from parser.image_handler import download_images
 
 class ACGJLBCrawler(BaseCrawler):
     """ACG俱乐部爬虫"""
@@ -54,6 +56,13 @@ class ACGJLBCrawler(BaseCrawler):
         # 标题 - ACG俱乐部使用 h1.article-title
         title_el = soup.select_one("h1.article-title")
         title = title_el.get_text(strip=True) if title_el else ""
+
+        # 标题开头的数字移到末尾（如 16495[RPG/...] → [RPG/...] 16495）
+        title_match = re.match(r'^(\d{4,6})(\[.+)', title)
+        if title_match:
+            num = title_match.group(1)
+            rest = title_match.group(2)
+            title = f"{rest} {num}"
 
         # 内容 - ACG俱乐部使用 div.wp-posts-content
         content_el = soup.select_one("div.wp-posts-content")
@@ -141,13 +150,21 @@ class ACGJLBCrawler(BaseCrawler):
         # 提取source_id
         source_id = url.split("/")[-1].replace(".html", "").split("?")[0]
 
+        # 下载图片到本地
+        proxy = None
+        if self.config.get("proxy", {}).get("enabled"):
+            proxy = self.config["proxy"]["http"]
+        local_images = download_images(images[:3], self.site_name, proxy=proxy)
+        if local_images:
+            images = [f"/images/{self.site_name}/{Path(p).name}" for p in local_images]
+
         return {
             "source": self.site_name,
             "source_id": source_id,
             "source_url": url,
             "title": title,
             "platform": platform,
-            "content": content[:2000],
+            "content": content[:5000],
             "likes": likes,
             "comments": comments,
             "views": views,
