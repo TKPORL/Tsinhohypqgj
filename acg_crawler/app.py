@@ -1,7 +1,8 @@
 """ACG资源聚合爬取工具 - 主程序"""
 import json
 import threading
-from flask import Flask, render_template, request, jsonify, send_file
+import requests as req_lib
+from flask import Flask, render_template, request, jsonify, send_file, Response
 
 from config import load_config
 from database import init_db, get_posts, get_post_count, delete_post, get_tasks, delete_task, get_conn
@@ -39,6 +40,28 @@ engine.progress_callback = progress_callback
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/api/proxy_image")
+def api_proxy_image():
+    """图片代理：服务端下载图片后转发给浏览器，解决防盗链问题"""
+    url = request.args.get("url", "")
+    if not url:
+        return "", 400
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": url,
+        }
+        proxy = None
+        if config.get("proxy", {}).get("enabled"):
+            proxy = config["proxy"]["http"]
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+        resp = req_lib.get(url, headers=headers, proxies=proxies, timeout=15, stream=True)
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "image/jpeg")
+        return Response(resp.iter_content(8192), content_type=content_type)
+    except Exception:
+        return "", 404
 
 @app.route("/api/posts")
 def api_posts():

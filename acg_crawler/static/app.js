@@ -205,7 +205,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
             let images = [];
             try { images = JSON.parse(post.images || "[]"); } catch(e) {}
-            const image = images[0] || "";
+            const rawImage = images[0] || "";
+            const image = rawImage ? ("/api/proxy_image?url=" + encodeURIComponent(rawImage)) : "";
 
             const platformTags = {
                 pc: '<span class="tag tag-pc">PC</span>',

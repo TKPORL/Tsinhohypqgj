@@ -25,7 +25,7 @@ class ACGRXCrawler(BaseCrawler):
                 print(f"[{self.site_name}] 未找到登录表单")
                 return
 
-            # 获取action URL
+            # 获取action URL（含CSRF token）
             action = form.get("action", "")
             if not action:
                 print(f"[{self.site_name}] 未找到登录action")
@@ -38,7 +38,12 @@ class ACGRXCrawler(BaseCrawler):
                 print(f"[{self.site_name}] 未配置登录凭据")
                 return
 
-            # 登录
+            # 登录 - 使用完整的headers模拟浏览器
+            self.session.headers.update({
+                "Referer": login_page_url,
+                "Origin": self.base_url,
+            })
+
             login_data = {
                 "name": email,
                 "password": password,
@@ -53,7 +58,11 @@ class ACGRXCrawler(BaseCrawler):
                 allow_redirects=True
             )
 
-            if "logout" in resp.text or "user" in resp.text.lower():
+            # 检查登录是否成功：查看cookie中是否有typecho_uid
+            if any("typecho_uid" in c.name for c in self.session.cookies):
+                self.logged_in = True
+                print(f"[{self.site_name}] 登录成功")
+            elif "logout" in resp.text:
                 self.logged_in = True
                 print(f"[{self.site_name}] 登录成功")
             else:
@@ -68,18 +77,39 @@ class ACGRXCrawler(BaseCrawler):
         else:
             url = f"{self.base_url}/page/{page_num}"
         soup = self._soup(url)
-        links = []
+        results = []
         for item in soup.select("div.post-item"):
             a = item.select_one("a.post-title")
-            if a and a.get("href"):
-                link = a["href"]
-                if not link.startswith("http"):
-                    link = self.base_url + link
-                # 过滤掉广告链接
-                if "fengyueai.me" in link or "mofacga.com" in link:
-                    continue
-                links.append(link)
-        return links
+            if not a or not a.get("href"):
+                continue
+
+            link = a["href"]
+            if not link.startswith("http"):
+                link = self.base_url + link
+
+            # 过滤掉广告链接
+            if "/go/" in link:
+                continue
+
+            # 只保留游戏分类帖子
+            cate_el = item.select_one("span.post-cate a")
+            category = cate_el.get_text(strip=True) if cate_el else ""
+            if category != "游戏":
+                continue
+
+            # 从标签提取平台信息
+            platform_tag = ""
+            for tag_el in item.select("span[class^='article-categories'] a"):
+                tag_text = tag_el.get_text(strip=True)
+                if tag_text in ("PC",):
+                    platform_tag = "PC"
+                    break
+                elif tag_text in ("安卓",):
+                    platform_tag = "AZ"
+                    break
+
+            results.append({"url": link, "category": platform_tag})
+        return results
 
     def parse_detail(self, url, category=""):
         soup = self._soup(url)
@@ -136,10 +166,16 @@ class ACGRXCrawler(BaseCrawler):
         if code_match:
             unzip_code = code_match.group(1)
 
-        # 判断平台
+        # 判断平台 - 优先从分类标签判断
         platform = "unknown"
+        category_lower = (category or "").lower()
         title_lower = title.lower()
-        if "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
+
+        if category_lower == "pc":
+            platform = "pc"
+        elif category_lower in ("az", "安卓", "android"):
+            platform = "android"
+        elif "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
             platform = "pc_android"
         elif "安卓" in title_lower:
             platform = "android"
