@@ -61,9 +61,9 @@ class ACGYXJCrawler(BaseCrawler):
             code = m.group(1)
             title = title[:m.start()].strip()
 
-        # 提取大小 [1.10G] [3.75GB] [840M]
+        # 提取大小 [1.10G] [3.75GB] [840M] 或 683MB]
         size = ""
-        m = _re.search(r'\s*[\[【](\d+\.?\d*\s*[GMgm][Bb]?)\s*[\]】]', title)
+        m = _re.search(r'(?:[\[【])?(\d+\.?\d*\s*[GMgm][Bb]?)(?:[\]】])?\s*(?:[\[【][CPcp]?\d{5,}[\]】])?\s*$', title)
         if m:
             size = m.group(1)
             title = title[:m.start()].strip()
@@ -75,8 +75,12 @@ class ACGYXJCrawler(BaseCrawler):
             parts.append(f"[{tag_str}]")
         parts.append(title)
         if size:
-            plat = "PC" if (category or "").upper() == "PC" else ""
-            if not plat and "安卓" not in title:
+            all_text = (prefix + " " + tags + " " + title).upper()
+            if "安卓" in all_text or "ANDROID" in all_text:
+                plat = ""
+            elif "PC" in all_text:
+                plat = "PC"
+            else:
                 plat = "PC"
             parts.append(f"[{plat} {size}]".strip() if plat else f"[{size}]")
         if code:
