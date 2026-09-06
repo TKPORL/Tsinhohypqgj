@@ -1,183 +1,117 @@
-"""ACG资源聚合爬取工具 - Demo版本（模拟数据）"""
-from flask import Flask, render_template, jsonify
-import random
-import time
+"""ACG资源聚合爬取工具 - 主程序"""
+import json
+import threading
+from flask import Flask, render_template, request, jsonify
+
+from config import load_config
+from database import init_db, get_posts, get_post_count, delete_post, get_tasks
+from crawler import CrawlerEngine
+from generator import export_posts
 
 app = Flask(__name__)
+config = load_config()
+init_db()
 
-MOCK_POSTS = [
-    {
-        "id": 1,
-        "title": "【PC+安卓/汉化/SLG】 elfinithoot ～エルフニクスと死書の魔導書～ v1.0 汉化版",
-        "source": "ACG游戏姬",
-        "platform": "pc_android",
-        "date": "2026-09-05",
-        "likes": 342,
-        "comments": 89,
-        "views": 12400,
-        "images": [
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/12345/capsule_616x353.jpg",
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/12345/ss_1.jpg",
-        ],
-        "baidu_link": "https://pan.baidu.com/s/1xxxxxxx",
-        "baidu_code": "acgx",
-        "mobile_link": "https://yun.139.com/xxx",
-        "mobile_code": "",
-        "unzip_code": "acgyxj.xyz",
-        "cheat_code": "F1=无敌 F2=无限金钱",
-        "source_url": "https://www.acgyxjvip.com/43546.html",
-    },
-    {
-        "id": 2,
-        "title": "【PC/汉化/RPG】 Alice's Spooky Adventure v1.0 汉化版",
-        "source": "萌幻ACG",
-        "platform": "pc",
-        "date": "2026-09-04",
-        "likes": 156,
-        "comments": 42,
-        "views": 5600,
-        "images": [
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/23456/capsule_616x353.jpg",
-        ],
-        "baidu_link": "https://pan.baidu.com/s/2yyyyyyy",
-        "baidu_code": "acgrx",
-        "mobile_link": "",
-        "mobile_code": "",
-        "unzip_code": "acgrx.com",
-        "cheat_code": "",
-        "source_url": "https://bbs.acgrx.com/game/38622.html",
-    },
-    {
-        "id": 3,
-        "title": "【PC/官中/SLG】 王国之心4 v2.5 全DLC",
-        "source": "ACG图书馆",
-        "platform": "pc",
-        "date": "2026-09-03",
-        "likes": 567,
-        "comments": 123,
-        "views": 23100,
-        "images": [
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/34567/capsule_616x353.jpg",
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/34567/ss_1.jpg",
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/34567/ss_2.jpg",
-        ],
-        "baidu_link": "https://pan.baidu.com/s/3zzzzzz",
-        "baidu_code": "",
-        "mobile_link": "https://yun.139.com/yyy",
-        "mobile_code": "1234",
-        "unzip_code": "acgll.xyz",
-        "cheat_code": "",
-        "source_url": "https://acgll.xyz/kingdom-hearts-4",
-    },
-    {
-        "id": 4,
-        "title": "【安卓/汉化/AVG】 校园日记 ～被禁止的梦～ v1.2 安卓版",
-        "source": "ACG游戏姬",
-        "platform": "android",
-        "date": "2026-09-02",
-        "likes": 89,
-        "comments": 15,
-        "views": 3200,
-        "images": [
-            "https://i.img114514.icu/xxx.jpg",
-        ],
-        "baidu_link": "https://pan.baidu.com/s/4aaaaaaa",
-        "baidu_code": "game",
-        "mobile_link": "https://yun.139.com/zzz",
-        "mobile_code": "",
-        "unzip_code": "acgyxj.top",
-        "cheat_code": "",
-        "source_url": "https://www.acgyxjvip.com/43500.html",
-    },
-    {
-        "id": 5,
-        "title": "【PC/安卓/汉化/动态】 少女领域Special v3.0 多平台版",
-        "source": "萌幻ACG",
-        "platform": "pc_android",
-        "date": "2026-09-01",
-        "likes": 445,
-        "comments": 78,
-        "views": 18900,
-        "images": [
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/56789/capsule_616x353.jpg",
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/56789/ss_1.jpg",
-        ],
-        "baidu_link": "https://pan.baidu.com/s/5bbbbbbb",
-        "baidu_code": "xbly",
-        "mobile_link": "https://yun.139.com/www",
-        "mobile_code": "5678",
-        "unzip_code": "bbs.acgrx.com",
-        "cheat_code": "Ctrl+G=调试模式",
-        "source_url": "https://bbs.acgrx.com/game/38600.html",
-    },
-    {
-        "id": 6,
-        "title": "【PC/官中/NTR】 黑暗之魂:永恒 v1.5 完全版",
-        "source": "ACG图书馆",
-        "platform": "pc",
-        "date": "2026-08-30",
-        "likes": 234,
-        "comments": 56,
-        "views": 9800,
-        "images": [
-            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/67890/capsule_616x353.jpg",
-        ],
-        "baidu_link": "https://pan.baidu.com/s/6ccccccc",
-        "baidu_code": "hzsh",
-        "mobile_link": "",
-        "mobile_code": "",
-        "unzip_code": "acgll.xyz",
-        "cheat_code": "",
-        "source_url": "https://acgll.xyz/dark-souls-eternal",
-    },
-]
+engine = CrawlerEngine(config)
 
+# 日志和进度存储
+log_store = {"logs": []}
+progress_store = {"current": 0, "total": 0, "success": 0, "skipped": 0, "error": 0}
+
+def log_callback(site, msg, level="info"):
+    import time
+    timestamp = time.strftime("%H:%M:%S")
+    log_entry = f"[{timestamp}] [{site}] {msg}"
+    log_store["logs"].append({"text": log_entry, "level": level})
+    if len(log_store["logs"]) > 500:
+        log_store["logs"] = log_store["logs"][-300:]
+
+def progress_callback(current, total, success, skipped, error):
+    progress_store["current"] = current
+    progress_store["total"] = total
+    progress_store["success"] = success
+    progress_store["skipped"] = skipped
+    progress_store["error"] = error
+
+engine.log_callback = log_callback
+engine.progress_callback = progress_callback
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
-
 @app.route("/api/posts")
-def get_posts():
-    platform = __import__("flask").request.args.get("platform", "all")
-    posts = MOCK_POSTS
-    if platform == "pc":
-        posts = [p for p in posts if p["platform"] in ("pc", "unknown")]
-    elif platform == "pc_android":
-        posts = [p for p in posts if p["platform"] == "pc_android"]
-    elif platform == "android":
-        posts = [p for p in posts if p["platform"] == "android"]
-    posts.sort(key=lambda x: (x["likes"] + x["comments"]), reverse=True)
-    return jsonify(posts)
-
+def api_posts():
+    platform = request.args.get("platform", "all")
+    source = request.args.get("source", "all")
+    limit = int(request.args.get("limit", 100))
+    offset = int(request.args.get("offset", 0))
+    posts = get_posts(platform=platform, source=source, limit=limit, offset=offset)
+    total = get_post_count(platform=platform, source=source)
+    return jsonify({"posts": posts, "total": total})
 
 @app.route("/api/start_crawl", methods=["POST"])
-def start_crawl():
-    return jsonify({"status": "ok", "task_id": 1})
+def api_start_crawl():
+    if engine.running:
+        return jsonify({"status": "error", "message": "已有任务在运行"})
 
+    data = request.json
+    mode = data.get("mode", "by_page")
+    sites = data.get("sites", ["acgyxj", "acgrx", "acgll", "acgjlb"])
+
+    log_store["logs"] = []
+    progress_store.update({"current": 0, "total": 0, "success": 0, "skipped": 0, "error": 0})
+
+    def run():
+        if mode == "by_page":
+            start_page = data.get("start_page", 1)
+            end_page = data.get("end_page", 10)
+            engine.crawl_by_page(sites, start_page, end_page)
+        elif mode == "by_date":
+            start_date = data.get("start_date", "")
+            end_date = data.get("end_date", "")
+            engine.crawl_by_date(sites, start_date, end_date)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+    return jsonify({"status": "ok"})
+
+@app.route("/api/stop_crawl", methods=["POST"])
+def api_stop_crawl():
+    engine.cancel()
+    return jsonify({"status": "ok"})
 
 @app.route("/api/progress")
-def progress():
+def api_progress():
     return jsonify({
-        "status": "running",
-        "current": random.randint(1, 50),
-        "total": 50,
-        "log": [
-            f"[{time.strftime('%H:%M:%S')}] 正在爬取第 {random.randint(1,50)} 页...",
-            f"[{time.strftime('%H:%M:%S')}] 发现 {random.randint(5,20)} 个帖子",
-            f"[{time.strftime('%H:%M:%S')}] 跳过 {random.randint(0,5)} 个(无网盘链接)",
-        ],
+        "running": engine.running,
+        **progress_store,
+        "recent_logs": log_store["logs"][-50:],
     })
 
-
 @app.route("/api/tasks")
-def tasks():
-    return jsonify([
-        {"id": 1, "type": "by_page", "site": "ACG游戏姬", "pages": "1-10", "status": "completed", "total": 150, "success": 89, "time": "2026-09-05 14:30"},
-        {"id": 2, "type": "by_date", "site": "萌幻ACG", "date": "2026-09-04", "status": "completed", "total": 45, "success": 23, "time": "2026-09-04 10:15"},
-    ])
+def api_tasks():
+    return jsonify(get_tasks())
 
+@app.route("/api/delete_post", methods=["POST"])
+def api_delete_post():
+    data = request.json
+    post_id = data.get("id")
+    if post_id:
+        delete_post(post_id)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/export", methods=["POST"])
+def api_export():
+    posts = get_posts(limit=10000)
+    result = export_posts(posts)
+    return jsonify({"status": "ok", "files": result})
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    flask_config = config.get("flask", {})
+    app.run(
+        host=flask_config.get("host", "127.0.0.1"),
+        port=flask_config.get("port", 5000),
+        debug=flask_config.get("debug", True),
+    )

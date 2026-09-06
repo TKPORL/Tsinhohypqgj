@@ -8,6 +8,9 @@ document.addEventListener("DOMContentLoaded", function() {
             panels.forEach(p => p.classList.remove("active"));
             this.classList.add("active");
             document.getElementById("panel-" + this.dataset.panel).classList.add("active");
+
+            if (this.dataset.panel === "result") loadPosts();
+            if (this.dataset.panel === "history") loadHistory();
         });
     });
 
@@ -27,7 +30,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
-    // 模拟爬取
+    // 开始爬取
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
     const progressSection = document.getElementById("progressSection");
@@ -36,152 +39,187 @@ document.addEventListener("DOMContentLoaded", function() {
     const logBox = document.getElementById("logBox");
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
-    let crawlTimer = null;
+    let pollTimer = null;
 
     startBtn.addEventListener("click", function() {
-        startBtn.classList.add("hidden");
-        stopBtn.classList.remove("hidden");
-        progressSection.classList.remove("hidden");
-        statusDot.classList.add("running");
-        statusText.textContent = "爬取中...";
-        logBox.innerHTML = "";
-        addLog("系统", "开始爬取任务...");
-        addLog("系统", "正在连接代理 127.0.0.1:7890...");
-        simulateCrawl();
+        const sites = [];
+        document.querySelectorAll('.checkbox-group input:checked').forEach(cb => {
+            sites.push(cb.value);
+        });
+        if (sites.length === 0) {
+            alert("请至少选择一个站点");
+            return;
+        }
+
+        const mode = document.querySelector('input[name="crawlMode"]:checked').value;
+        const body = { mode: mode, sites: sites };
+
+        if (mode === "by_page") {
+            body.start_page = parseInt(document.getElementById("startPage").value) || 1;
+            body.end_page = parseInt(document.getElementById("endPage").value) || 10;
+        } else {
+            body.start_date = document.getElementById("startDate").value;
+            body.end_date = document.getElementById("endDate").value;
+        }
+
+        fetch("/api/start_crawl", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === "ok") {
+                startBtn.classList.add("hidden");
+                stopBtn.classList.remove("hidden");
+                progressSection.classList.remove("hidden");
+                statusDot.classList.add("running");
+                statusText.textContent = "爬取中...";
+                logBox.innerHTML = "";
+                pollProgress();
+            } else {
+                alert(data.message || "启动失败");
+            }
+        });
     });
 
     stopBtn.addEventListener("click", function() {
-        clearInterval(crawlTimer);
+        fetch("/api/stop_crawl", {method: "POST"});
+        clearInterval(pollTimer);
         startBtn.classList.remove("hidden");
         stopBtn.classList.add("hidden");
         statusDot.classList.remove("running");
         statusText.textContent = "已停止";
-        addLog("系统", "用户取消了爬取任务", "error");
     });
 
-    function simulateCrawl() {
-        let current = 0;
-        const total = 50;
-        crawlTimer = setInterval(function() {
-            current++;
-            if (current > total) {
-                clearInterval(crawlTimer);
-                startBtn.classList.remove("hidden");
-                stopBtn.classList.add("hidden");
-                statusDot.classList.remove("running");
-                statusText.textContent = "完成";
-                addLog("系统", "爬取任务完成！共爬取 89 条，跳过 61 条", "success");
-                loadPosts();
-                return;
-            }
-            const pct = Math.round((current / total) * 100);
-            progressFill.style.width = pct + "%";
-            progressText.textContent = current + " / " + total;
-            const sites = ["ACG游戏姬", "萌幻ACG", "ACG图书馆"];
-            const site = sites[Math.floor(Math.random() * sites.length)];
-            addLog(site, "正在爬取第 " + current + " 页...");
-            if (Math.random() > 0.6) {
-                const count = Math.floor(Math.random() * 15) + 5;
-                addLog(site, "发现 " + count + " 个帖子");
-            }
-            if (Math.random() > 0.7) {
-                const skip = Math.floor(Math.random() * 5) + 1;
-                addLog(site, "跳过 " + skip + " 个(无百度/移动云盘链接)");
-            }
-            if (Math.random() > 0.9) {
-                addLog(site, "请求超时，重试中...", "error");
-            }
-        }, 200);
-    }
+    function pollProgress() {
+        pollTimer = setInterval(function() {
+            fetch("/api/progress")
+                .then(r => r.json())
+                .then(data => {
+                    const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+                    progressFill.style.width = pct + "%";
+                    progressText.textContent = data.current + " / " + data.total;
+                    document.getElementById("statSuccess").textContent = data.success;
+                    document.getElementById("statSkipped").textContent = data.skipped;
+                    document.getElementById("statError").textContent = data.error;
 
-    function addLog(source, msg, type) {
-        const time = new Date().toLocaleTimeString("zh-CN", {hour12: false});
-        const line = document.createElement("div");
-        line.className = "log-line" + (type ? " " + type : "");
-        line.textContent = "[" + time + "] [" + source + "] " + msg;
-        logBox.appendChild(line);
-        logBox.scrollTop = logBox.scrollHeight;
+                    if (data.recent_logs) {
+                        logBox.innerHTML = "";
+                        data.recent_logs.forEach(log => {
+                            const line = document.createElement("div");
+                            line.className = "log-line" + (log.level === "error" ? " error" : "");
+                            line.textContent = log.text;
+                            logBox.appendChild(line);
+                        });
+                        logBox.scrollTop = logBox.scrollHeight;
+                    }
+
+                    if (!data.running) {
+                        clearInterval(pollTimer);
+                        startBtn.classList.remove("hidden");
+                        stopBtn.classList.add("hidden");
+                        statusDot.classList.remove("running");
+                        statusText.textContent = "完成";
+                    }
+                });
+        }, 1000);
     }
 
     // 加载帖子
+    let postOffset = 0;
     function loadPosts() {
-        fetch("/api/posts")
+        postOffset = 0;
+        const source = document.getElementById("filterSource").value;
+        const platform = document.getElementById("filterPlatform").value;
+        fetch(`/api/posts?source=${source}&platform=${platform}&limit=50&offset=0`)
             .then(r => r.json())
             .then(data => {
-                document.getElementById("resultCount").textContent = data.length;
-                renderCards(data);
+                document.getElementById("resultCount").textContent = data.total;
+                renderCards(data.posts);
+                document.getElementById("loadMore").classList.toggle("hidden", data.posts.length < 50);
+                postOffset = data.posts.length;
             });
     }
+
+    document.getElementById("filterSource").addEventListener("change", loadPosts);
+    document.getElementById("filterPlatform").addEventListener("change", loadPosts);
+
+    document.getElementById("loadMoreBtn").addEventListener("click", function() {
+        const source = document.getElementById("filterSource").value;
+        const platform = document.getElementById("filterPlatform").value;
+        fetch(`/api/posts?source=${source}&platform=${platform}&limit=50&offset=${postOffset}`)
+            .then(r => r.json())
+            .then(data => {
+                appendCards(data.posts);
+                postOffset += data.posts.length;
+                if (data.posts.length < 50) {
+                    document.getElementById("loadMore").classList.add("hidden");
+                }
+            });
+    });
 
     function renderCards(posts) {
         const grid = document.getElementById("cardGrid");
         grid.innerHTML = "";
+        appendCards(posts);
+    }
+
+    function appendCards(posts) {
+        const grid = document.getElementById("cardGrid");
         posts.forEach(post => {
             const card = document.createElement("div");
             card.className = "card";
-            const platformTag = {
+
+            let images = [];
+            try { images = JSON.parse(post.images || "[]"); } catch(e) {}
+            const image = images[0] || "";
+
+            const platformTags = {
                 pc: '<span class="tag tag-pc">PC</span>',
                 android: '<span class="tag tag-android">安卓</span>',
                 pc_android: '<span class="tag tag-pc">PC</span><span class="tag tag-android">安卓</span>',
                 unknown: '<span class="tag tag-pc">未知</span>'
-            }[post.platform] || "";
-            const imagesHtml = post.images.map((img, i) =>
-                '<img src="' + img + '" alt="" style="' + (i > 0 ? 'display:none' : '') + '" class="card-img">'
-            ).join("");
-            const dotsHtml = post.images.map((_, i) =>
-                '<span class="image-dot' + (i === 0 ? ' active' : '') + '"></span>'
-            ).join("");
+            };
+            const platformTag = platformTags[post.platform] || platformTags.unknown;
+
             let linksHtml = "";
             if (post.baidu_link) {
-                linksHtml += '<a href="' + post.baidu_link + '" class="link-btn link-baidu" target="_blank">百度网盘' + (post.baidu_code ? ' (' + post.baidu_code + ')' : '') + '</a>';
+                linksHtml += `<a href="${post.baidu_link}" class="link-btn link-baidu" target="_blank">百度网盘${post.baidu_code ? ' ('+post.baidu_code+')' : ''}</a>`;
             }
             if (post.mobile_link) {
-                linksHtml += '<a href="' + post.mobile_link + '" class="link-btn link-mobile" target="_blank">移动云盘' + (post.mobile_code ? ' (' + post.mobile_code + ')' : '') + '</a>';
+                linksHtml += `<a href="${post.mobile_link}" class="link-btn link-mobile" target="_blank">移动云盘${post.mobile_code ? ' ('+post.mobile_code+')' : ''}</a>`;
             }
-            linksHtml += '<a href="' + post.source_url + '" class="link-btn link-source" target="_blank">原帖</a>';
+            linksHtml += `<a href="${post.source_url}" class="link-btn link-source" target="_blank">原帖</a>`;
+
             let footerHtml = "";
             if (post.unzip_code || post.cheat_code) {
-                footerHtml += '<div class="footer-left">';
-                if (post.unzip_code) {
-                    footerHtml += '<span>解压码: <span class="copy-text" onclick="copyText(this)">' + post.unzip_code + '</span></span>';
-                }
-                if (post.cheat_code) {
-                    footerHtml += '<span>作弊码: <span class="copy-text" onclick="copyText(this)">' + post.cheat_code + '</span></span>';
-                }
-                footerHtml += '</div>';
+                footerHtml = '<div class="card-footer"><div class="footer-left">';
+                if (post.unzip_code) footerHtml += `<span>解压码: <span class="copy-text" onclick="copyText(this)">${post.unzip_code}</span></span>`;
+                if (post.cheat_code) footerHtml += `<span>作弊码: <span class="copy-text" onclick="copyText(this)">${post.cheat_code}</span></span>`;
+                footerHtml += '</div></div>';
             }
-            card.innerHTML =
-                '<div class="card-header">' +
-                    '<div class="card-tags">' + platformTag + '<span class="tag tag-source">' + post.source + '</span></div>' +
-                    '<span class="tag tag-date">' + post.date + '</span>' +
-                '</div>' +
-                '<div class="card-images">' + imagesHtml +
-                    '<div class="image-nav">' + dotsHtml + '</div>' +
-                '</div>' +
-                '<div class="card-body">' +
-                    '<div class="card-title">' + post.title + '</div>' +
-                    '<div class="card-stats">' +
-                        '<span class="stat-item">❤ ' + post.likes + '</span>' +
-                        '<span class="stat-item">💬 ' + post.comments + '</span>' +
-                        '<span class="stat-item">👁 ' + formatNumber(post.views) + '</span>' +
-                    '</div>' +
-                    '<div class="card-links">' + linksHtml + '</div>' +
-                '</div>' +
-                (footerHtml ? '<div class="card-footer">' + footerHtml + '</div>' : '');
+
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="card-tags">${platformTag}<span class="tag tag-source">${post.source}</span></div>
+                    <span class="tag tag-date">${post.post_date || ''}</span>
+                </div>
+                <div class="card-images">
+                    <img src="${image}" alt="" onerror="this.style.display='none'">
+                </div>
+                <div class="card-body">
+                    <div class="card-title">${post.title}</div>
+                    <div class="card-stats">
+                        <span class="stat-item">❤ ${post.likes || 0}</span>
+                        <span class="stat-item">💬 ${post.comments || 0}</span>
+                        <span class="stat-item">👁 ${formatNumber(post.views || 0)}</span>
+                    </div>
+                    <div class="card-links">${linksHtml}</div>
+                </div>
+                ${footerHtml}
+            `;
             grid.appendChild(card);
-            // 图片轮播
-            const imgs = card.querySelectorAll(".card-img");
-            const dotEls = card.querySelectorAll(".image-dot");
-            if (imgs.length > 1) {
-                let idx = 0;
-                setInterval(function() {
-                    imgs[idx].style.display = "none";
-                    dotEls[idx].classList.remove("active");
-                    idx = (idx + 1) % imgs.length;
-                    imgs[idx].style.display = "block";
-                    dotEls[idx].classList.add("active");
-                }, 3000);
-            }
         });
     }
 
@@ -191,8 +229,47 @@ document.addEventListener("DOMContentLoaded", function() {
         return n;
     }
 
-    // 初始加载
-    loadPosts();
+    // 加载历史
+    function loadHistory() {
+        fetch("/api/tasks")
+            .then(r => r.json())
+            .then(data => {
+                const tbody = document.getElementById("historyBody");
+                tbody.innerHTML = "";
+                data.forEach(task => {
+                    const tr = document.createElement("tr");
+                    const statusBadge = {
+                        completed: '<span class="badge badge-success">完成</span>',
+                        running: '<span class="badge badge-warning">运行中</span>',
+                        failed: '<span class="badge badge-error">失败</span>',
+                        cancelled: '<span class="badge badge-warning">已取消</span>',
+                    }[task.status] || task.status;
+                    tr.innerHTML = `
+                        <td>${task.id}</td>
+                        <td>${task.task_type === 'by_page' ? '按页码' : '按日期'}</td>
+                        <td>${task.sites || ''}</td>
+                        <td>${statusBadge}</td>
+                        <td>${task.success_posts}</td>
+                        <td>${task.skipped_posts}</td>
+                        <td>${task.error_posts}</td>
+                        <td>${task.created_at || ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            });
+    }
+
+    // 导出
+    window.doExport = function() {
+        fetch("/api/export", {method: "POST"})
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    document.getElementById("exportInfo").style.display = "block";
+                    alert("导出完成！文件已保存到 output 目录。");
+                }
+            });
+    };
 });
 
 function copyText(el) {

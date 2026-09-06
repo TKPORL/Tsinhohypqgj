@@ -395,6 +395,29 @@ select:focus {
     color: var(--success);
 }
 
+.stats-row {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+.stat {
+    padding: 4px 10px;
+    background: var(--bg-input);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.stat.success { color: var(--success); }
+.stat.skipped { color: var(--warning); }
+.stat.error { color: var(--danger); }
+
+.load-more {
+    text-align: center;
+    padding: 20px;
+}
+
 .result-filters {
     display: flex;
     gap: 12px;

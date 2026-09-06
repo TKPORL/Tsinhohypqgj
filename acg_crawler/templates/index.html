@@ -38,33 +38,27 @@
                         <label class="checkbox-label"><input type="checkbox" value="acgyxj" checked> ACG游戏姬</label>
                         <label class="checkbox-label"><input type="checkbox" value="acgrx" checked> 萌幻ACG</label>
                         <label class="checkbox-label"><input type="checkbox" value="acgll" checked> ACG图书馆</label>
+                        <label class="checkbox-label"><input type="checkbox" value="acgjlb" checked> ACG俱乐部</label>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label>爬取模式</label>
                     <div class="radio-group">
-                        <label class="radio-label"><input type="radio" name="crawlMode" value="by_date" checked> 按日期爬取</label>
-                        <label class="radio-label"><input type="radio" name="crawlMode" value="by_page"> 按页码爬取</label>
+                        <label class="radio-label"><input type="radio" name="crawlMode" value="by_page" checked> 按页码爬取</label>
+                        <label class="radio-label"><input type="radio" name="crawlMode" value="by_date"> 按日期爬取</label>
                     </div>
                 </div>
 
-                <div class="form-group" id="dateGroup">
-                    <label>日期范围</label>
-                    <div class="date-inputs">
-                        <input type="date" id="startDate" value="2026-09-01">
-                        <span>至</span>
-                        <input type="date" id="endDate" value="2026-09-06">
-                    </div>
-                </div>
-
-                <div class="form-group hidden" id="pageGroup">
+                <div class="form-group" id="pageGroup">
                     <label>页码范围</label>
                     <div class="page-inputs">
                         <select id="pageSite">
+                            <option value="all">全部站点</option>
                             <option value="acgyxj">ACG游戏姬</option>
                             <option value="acgrx">萌幻ACG</option>
                             <option value="acgll">ACG图书馆</option>
+                            <option value="acgjlb">ACG俱乐部</option>
                         </select>
                         <input type="number" id="startPage" value="1" min="1" placeholder="起始页">
                         <span>至</span>
@@ -72,12 +66,12 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label>平台过滤</label>
-                    <div class="radio-group">
-                        <label class="radio-label"><input type="radio" name="platform" value="all" checked> 全部</label>
-                        <label class="radio-label"><input type="radio" name="platform" value="pc"> 仅PC</label>
-                        <label class="radio-label"><input type="radio" name="platform" value="pc_android"> 仅PC+安卓</label>
+                <div class="form-group hidden" id="dateGroup">
+                    <label>日期范围</label>
+                    <div class="date-inputs">
+                        <input type="date" id="startDate" value="2026-09-01">
+                        <span>至</span>
+                        <input type="date" id="endDate" value="2026-09-06">
                     </div>
                 </div>
 
@@ -93,6 +87,11 @@
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="stats-row">
+                        <span class="stat success">成功: <strong id="statSuccess">0</strong></span>
+                        <span class="stat skipped">跳过: <strong id="statSkipped">0</strong></span>
+                        <span class="stat error">失败: <strong id="statError">0</strong></span>
                     </div>
                     <div class="log-box" id="logBox">
                         <div class="log-line">[系统] 等待开始...</div>
@@ -110,6 +109,7 @@
                             <option value="ACG游戏姬">ACG游戏姬</option>
                             <option value="萌幻ACG">萌幻ACG</option>
                             <option value="ACG图书馆">ACG图书馆</option>
+                            <option value="ACG俱乐部">ACG俱乐部</option>
                         </select>
                         <select id="filterPlatform">
                             <option value="all">全部平台</option>
@@ -120,8 +120,9 @@
                         <span class="result-count">共 <strong id="resultCount">0</strong> 条</span>
                     </div>
                 </div>
-                <div class="card-grid" id="cardGrid">
-                    <!-- 动态生成 -->
+                <div class="card-grid" id="cardGrid"></div>
+                <div class="load-more hidden" id="loadMore">
+                    <button class="btn btn-primary" id="loadMoreBtn">加载更多</button>
                 </div>
             </div>
 
@@ -136,44 +137,14 @@
                             <th>ID</th>
                             <th>类型</th>
                             <th>站点</th>
-                            <th>范围</th>
                             <th>状态</th>
-                            <th>总数</th>
                             <th>成功</th>
+                            <th>跳过</th>
+                            <th>失败</th>
                             <th>时间</th>
-                            <th>操作</th>
                         </tr>
                     </thead>
-                    <tbody id="historyBody">
-                        <tr>
-                            <td>1</td>
-                            <td>按页码</td>
-                            <td>ACG游戏姬</td>
-                            <td>1-10页</td>
-                            <td><span class="badge badge-success">完成</span></td>
-                            <td>150</td>
-                            <td>89</td>
-                            <td>2026-09-05 14:30</td>
-                            <td>
-                                <button class="btn btn-sm">查看</button>
-                                <button class="btn btn-sm btn-danger">删除</button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>2</td>
-                            <td>按日期</td>
-                            <td>萌幻ACG</td>
-                            <td>09-04</td>
-                            <td><span class="badge badge-success">完成</span></td>
-                            <td>45</td>
-                            <td>23</td>
-                            <td>2026-09-04 10:15</td>
-                            <td>
-                                <button class="btn btn-sm">查看</button>
-                                <button class="btn btn-sm btn-danger">删除</button>
-                            </td>
-                        </tr>
-                    </tbody>
+                    <tbody id="historyBody"></tbody>
                 </table>
             </div>
 
@@ -187,20 +158,17 @@
                         <div class="export-icon">PC</div>
                         <h3>PC.html</h3>
                         <p>仅包含PC平台的游戏资源</p>
-                        <p class="export-count"><strong>89</strong> 条记录</p>
-                        <button class="btn btn-primary">下载 PC.html</button>
+                        <button class="btn btn-primary" onclick="doExport()">生成并下载</button>
                     </div>
                     <div class="export-card">
                         <div class="export-icon">PC+安卓</div>
                         <h3>PC+安卓.html</h3>
                         <p>包含PC和安卓双平台的游戏资源</p>
-                        <p class="export-count"><strong>12</strong> 条记录</p>
-                        <button class="btn btn-primary">下载 PC+安卓.html</button>
+                        <button class="btn btn-primary" onclick="doExport()">生成并下载</button>
                     </div>
                 </div>
-                <div class="export-info">
-                    <p>导出的HTML文件为单文件，图片已下载到本地，可离线浏览。</p>
-                    <p>生成时间: 2026-09-06 12:00</p>
+                <div class="export-info" id="exportInfo" style="display:none">
+                    <p>导出完成！文件已保存到 output 目录。</p>
                 </div>
             </div>
         </section>

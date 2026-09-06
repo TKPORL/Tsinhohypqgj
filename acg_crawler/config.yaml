@@ -1,0 +1,76 @@
+# ACG资源聚合爬取工具 - 配置文件
+
+# 代理设置
+proxy:
+  enabled: true
+  http: "http://127.0.0.1:7890"
+  https: "http://127.0.0.1:7890"
+
+# 爬虫设置
+crawler:
+  max_workers: 8
+  request_delay_min: 0.5
+  request_delay_max: 1.5
+  timeout: 15
+  max_retries: 3
+  retry_delay: 2
+
+# 萌幻ACG登录
+acgrx:
+  email: "Tsinhos@qq.com"
+  password: "123456@@@@"
+
+# 图片设置
+images:
+  download: true
+  max_size_mb: 10
+  timeout: 30
+
+# 网盘过滤
+filter:
+  allow_baidu: true
+  allow_mobile: true
+  allow_quark: false
+  allow_uc: false
+  allow_xunlei: false
+
+# 排序
+sort:
+  by: "likes_comments"
+  order: "desc"
+
+# Flask
+flask:
+  host: "127.0.0.1"
+  port: 5000
+  debug: true
+
+# 站点配置
+sites:
+  acgyxj:
+    name: "ACG游戏姬"
+    base_url: "https://www.acgyxjvip.com"
+    list_path: "/page/{page}"
+    detail_path: "/{id}.html"
+    enabled: true
+
+  acgrx:
+    name: "萌幻ACG"
+    base_url: "https://bbs.acgrx.com"
+    list_path: "/page/{page}"
+    detail_path: "/game/{id}.html"
+    enabled: true
+
+  acgll:
+    name: "ACG图书馆"
+    base_url: "https://acgll.xyz"
+    list_path: "/category/youxi/page/{page}"
+    detail_path: "/{slug}"
+    enabled: true
+
+  acgjlb:
+    name: "ACG俱乐部"
+    base_url: "https://www.acgjlb.cc"
+    list_path: "/acggame?page={page}"
+    detail_path: "/{id}"
+    enabled: true
