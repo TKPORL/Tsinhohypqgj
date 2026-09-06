@@ -263,6 +263,19 @@ input:focus, select:focus {
     border-radius: 5px;
 }
 .btn-sm:hover { border-color: var(--accent); }
+.btn-unzip {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid rgba(224,86,160,0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn-unzip:hover { background: var(--accent-glow); }
+.btn-unzip:disabled { opacity: 0.6; cursor: default; }
 
 .hidden { display: none !important; }
 
@@ -605,6 +618,97 @@ input:focus, select:focus {
 }
 
 .load-more { text-align: center; padding: 16px; }
+
+/* ===== Grouped Results ===== */
+.sticky-date-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+.sticky-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.sticky-btns {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+}
+.sticky-date-btn {
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--bg-input);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.sticky-date-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.sticky-date-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.date-group {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.date-group-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+.date-group-header:hover { background: var(--bg-card-hover); }
+.date-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.date-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 8px;
+    background: var(--bg-input);
+    border-radius: 3px;
+}
+.toggle-btn {
+    margin-left: auto;
+}
+.group-cards {
+    display: none;
+    padding: 14px;
+}
+.date-group.expanded .group-cards {
+    display: grid;
+}
+.date-group.expanded .toggle-btn {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
 
 /* ===== Responsive ===== */
 @media (max-width: 768px) {

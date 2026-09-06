@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from crawler.base import BaseCrawler
 from parser import extract_links, extract_cloud_name, extract_cheat_code
-from parser.image_handler import download_images
+from parser.image_handler import download_images, get_web_path
 
 class ACGRXCrawler(BaseCrawler):
     """萌幻ACG爬虫"""
@@ -162,11 +162,8 @@ class ACGRXCrawler(BaseCrawler):
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
 
-        # 提取解压码
-        unzip_code = ""
-        code_match = re.search(r'(?:解压码|解压密码|密码)[：:\s]*(\S+)', content)
-        if code_match:
-            unzip_code = code_match.group(1)
+        # 提取解压码（萌幻ACG固定为唯ai雪莉酒）
+        unzip_code = "唯ai雪莉酒"
 
         # 判断平台 - 优先从分类标签判断
         platform = "unknown"
@@ -193,7 +190,7 @@ class ACGRXCrawler(BaseCrawler):
             proxy = self.config["proxy"]["http"]
         local_images = download_images(images[:3], self.site_name, proxy=proxy)
         if local_images:
-            images = [f"/images/{self.site_name}/{Path(p).name}" for p in local_images]
+            images = [get_web_path(p, self.site_name) for p in local_images]
 
         return {
             "source": self.site_name,
@@ -202,9 +199,9 @@ class ACGRXCrawler(BaseCrawler):
             "title": title,
             "platform": platform,
             "content": content[:5000],
-            "likes": likes,
-            "comments": comments,
-            "views": views,
+            "likes": 0,
+            "comments": 0,
+            "views": 0,
             "unzip_code": unzip_code,
             "cheat_code": cheat_code,
             "baidu_link": links.get("baidu_link"),

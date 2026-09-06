@@ -47,10 +47,16 @@ def index():
 
 @app.route("/images/<path:source>/<path:filename>")
 def serve_image(source, filename):
-    """提供本地下载的图片"""
+    """提供本地下载的图片（兼容hash目录和旧中文目录）"""
     img_path = IMAGES_DIR / source / filename
     if img_path.exists():
         return send_file(str(img_path))
+    # 兼容旧路径：遍历images下所有子目录查找
+    for d in IMAGES_DIR.iterdir():
+        if d.is_dir():
+            candidate = d / filename
+            if candidate.exists():
+                return send_file(str(candidate))
     return "", 404
 
 @app.route("/api/proxy_image")
@@ -84,6 +90,49 @@ def api_posts():
     posts = get_posts(platform=platform, source=source, limit=limit, offset=offset)
     total = get_post_count(platform=platform, source=source)
     return jsonify({"posts": posts, "total": total})
+
+@app.route("/api/posts_grouped")
+def api_posts_grouped():
+    """按爬取时间分组返回帖子"""
+    platform = request.args.get("platform", "all")
+    source = request.args.get("source", "all")
+    with get_conn() as conn:
+        query = "SELECT *, DATE(crawled_at) as crawl_date FROM posts WHERE 1=1"
+        params = []
+        if platform and platform != "all":
+            if platform == "pc":
+                query += " AND (platform = 'pc' OR platform = 'unknown')"
+            elif platform == "pc_android":
+                query += " AND platform = 'pc_android'"
+            elif platform == "android":
+                query += " AND platform = 'android'"
+        if source and source != "all":
+            query += " AND source = ?"
+            params.append(source)
+        query += """ ORDER BY
+            (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 0 ELSE 1 END),
+            (CASE source
+                WHEN 'ACG游戏姬' THEN 1
+                WHEN 'ACG图书馆' THEN 2
+                WHEN 'ACG俱乐部' THEN 3
+                WHEN '萌幻ACG' THEN 4
+                ELSE 5
+            END),
+            id DESC"""
+        rows = conn.execute(query, params).fetchall()
+
+        groups = {}
+        for row in rows:
+            d = dict(row)
+            crawl_date = d.get("crawl_date") or "未知日期"
+            if crawl_date not in groups:
+                groups[crawl_date] = {"date": crawl_date, "posts": [], "total": 0}
+            groups[crawl_date]["posts"].append(d)
+            groups[crawl_date]["total"] += 1
+
+        # 按日期倒序排列
+        sorted_groups = sorted(groups.values(), key=lambda g: g["date"], reverse=True)
+        return jsonify({"groups": sorted_groups})
 
 @app.route("/api/start_crawl", methods=["POST"])
 def api_start_crawl():

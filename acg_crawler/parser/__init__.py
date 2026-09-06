@@ -22,6 +22,11 @@ CLOUD_NAME_PATTERNS = [
     re.compile(r'(?:百度网盘|移动云盘|百度云|移动云)\s*[:：]\s*([A-Za-z0-9]+)', re.IGNORECASE),
     re.compile(r'文件[名码称]\s*[:：]?\s*([A-Za-z0-9]{4,})', re.IGNORECASE),
     re.compile(r'(?:链接|下载)\s*[:：]\s*\S+\s+(?:文件名|名称)\s*[:：]?\s*([A-Za-z0-9]{4,})', re.IGNORECASE),
+    # 匹配 "分享文件：XXXX" 和 "通过网盘分享的文件：XXXX" 格式
+    re.compile(r'分享文件[：:]\s*([A-Za-z0-9]+)', re.IGNORECASE),
+    re.compile(r'通过(?:百度|移动|阿里)?网盘分享的文件[：:]\s*([A-Za-z0-9]+)', re.IGNORECASE),
+    # 匹配 "百度：...分享的文件：A1326" 格式
+    re.compile(r'分享的文件[：:]\s*([A-Za-z0-9]+)', re.IGNORECASE),
 ]
 
 CHEAT_CODE_PATTERN = re.compile(
@@ -96,15 +101,14 @@ def has_valid_link(text):
 
 
 def extract_cloud_name(text):
-    """从内容中提取网盘文件名（如 C156222）"""
+    """从内容中提取网盘文件名（如 C156222, 24917, A1326）"""
     if not text:
         return ""
     for pattern in CLOUD_NAME_PATTERNS:
         match = pattern.search(text)
         if match:
             name = match.group(1).strip()
-            # 过滤掉明显不是文件名的值
-            if len(name) >= 4 and not name.isdigit():
+            if len(name) >= 3:
                 return name
     return ""
 

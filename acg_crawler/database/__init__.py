@@ -111,7 +111,17 @@ def get_posts(platform=None, source=None, limit=100, offset=0):
         if source and source != "all":
             query += " AND source = ?"
             params.append(source)
-        query += " ORDER BY (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 1 ELSE 0 END) DESC, (likes + comments) DESC LIMIT ? OFFSET ?"
+        query += """ ORDER BY
+            (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 0 ELSE 1 END),
+            (CASE source
+                WHEN 'ACG游戏姬' THEN 1
+                WHEN 'ACG图书馆' THEN 2
+                WHEN 'ACG俱乐部' THEN 3
+                WHEN '萌幻ACG' THEN 4
+                ELSE 5
+            END),
+            id DESC
+            LIMIT ? OFFSET ?"""
         params.extend([limit, offset])
         return [dict(row) for row in conn.execute(query, params).fetchall()]
 

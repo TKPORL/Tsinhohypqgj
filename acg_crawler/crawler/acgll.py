@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from crawler.base import BaseCrawler
 from parser import extract_links, extract_cloud_name, extract_cheat_code
-from parser.image_handler import download_images
+from parser.image_handler import download_images, get_web_path
 
 class ACGLLCrawler(BaseCrawler):
     """ACG图书馆爬虫"""
@@ -107,11 +107,8 @@ class ACGLLCrawler(BaseCrawler):
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
 
-        # 提取解压码
-        unzip_code = ""
-        code_match = re.search(r'(?:解压码|解压密码|密码)[：:\s]*(\S+)', content)
-        if code_match:
-            unzip_code = code_match.group(1)
+        # 提取解压码（ACG图书馆固定为007721）
+        unzip_code = "007721"
 
         # 判断平台 - 优先从分类标签判断
         platform = "unknown"
@@ -138,7 +135,7 @@ class ACGLLCrawler(BaseCrawler):
             proxy = self.config["proxy"]["http"]
         local_images = download_images(images[:3], self.site_name, proxy=proxy)
         if local_images:
-            images = [f"/images/{self.site_name}/{Path(p).name}" for p in local_images]
+            images = [get_web_path(p, self.site_name) for p in local_images]
 
         return {
             "source": self.site_name,

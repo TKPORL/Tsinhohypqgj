@@ -131,136 +131,133 @@ document.addEventListener("DOMContentLoaded", function() {
         }, 1000);
     }
 
-    // ========== 结果面板 - 多选 + 批量操作 ==========
-    let postOffset = 0;
+    // ========== 结果面板 - 分组 + 多选 + 批量操作 ==========
     const selectedIds = new Set();
 
     function loadPosts() {
-        postOffset = 0;
         selectedIds.clear();
         updateBatchBar();
         const source = document.getElementById("filterSource").value;
         const platform = document.getElementById("filterPlatform").value;
-        fetch(`/api/posts?source=${source}&platform=${platform}&limit=50&offset=0`)
+        fetch(`/api/posts_grouped?source=${source}&platform=${platform}`)
             .then(r => r.json())
             .then(data => {
-                document.getElementById("resultCount").textContent = data.total;
-                renderCards(data.posts);
-                document.getElementById("loadMore").classList.toggle("hidden", data.posts.length < 50);
-                postOffset = data.posts.length;
+                let totalPosts = 0;
+                data.groups.forEach(g => totalPosts += g.total);
+                document.getElementById("resultCount").textContent = totalPosts;
+                renderGroups(data.groups);
             });
     }
 
     document.getElementById("filterSource").addEventListener("change", loadPosts);
     document.getElementById("filterPlatform").addEventListener("change", loadPosts);
 
-    document.getElementById("loadMoreBtn").addEventListener("click", function() {
-        const source = document.getElementById("filterSource").value;
-        const platform = document.getElementById("filterPlatform").value;
-        fetch(`/api/posts?source=${source}&platform=${platform}&limit=50&offset=${postOffset}`)
-            .then(r => r.json())
-            .then(data => {
-                appendCards(data.posts);
-                postOffset += data.posts.length;
-                if (data.posts.length < 50) {
-                    document.getElementById("loadMore").classList.add("hidden");
+    function renderGroups(groups) {
+        const container = document.getElementById("groupedResults");
+        container.innerHTML = "";
+        const stickyBtns = document.getElementById("stickyBtns");
+        stickyBtns.innerHTML = "";
+
+        groups.forEach((group, idx) => {
+            // 吸顶按钮
+            const btn = document.createElement("button");
+            btn.className = "sticky-date-btn";
+            btn.textContent = group.date + " (" + group.total + ")";
+            btn.dataset.group = idx;
+            btn.addEventListener("click", function() {
+                const targetGroup = document.getElementById("group-" + idx);
+                const wasExpanded = targetGroup.classList.contains("expanded");
+                document.querySelectorAll(".date-group").forEach(g => g.classList.remove("expanded"));
+                document.querySelectorAll(".sticky-date-btn").forEach(b => b.classList.remove("active"));
+                if (!wasExpanded) {
+                    targetGroup.classList.add("expanded");
+                    this.classList.add("active");
+                    targetGroup.scrollIntoView({ behavior: "smooth", block: "start" });
                 }
             });
-    });
+            stickyBtns.appendChild(btn);
 
-    // 全选/取消全选
-    document.getElementById("selectAll").addEventListener("change", function() {
-        const checked = this.checked;
-        document.querySelectorAll(".card-select input[type='checkbox']").forEach(cb => {
-            cb.checked = checked;
-            const id = parseInt(cb.dataset.id);
-            if (checked) {
-                selectedIds.add(id);
-            } else {
-                selectedIds.delete(id);
-            }
+            // 分组容器
+            const groupEl = document.createElement("div");
+            groupEl.className = "date-group";
+            groupEl.id = "group-" + idx;
+
+            const headerEl = document.createElement("div");
+            headerEl.className = "date-group-header";
+            headerEl.innerHTML = '<span class="date-label">' + group.date + '</span><span class="date-count">' + group.total + ' 条</span><button class="btn btn-sm toggle-btn" onclick="toggleGroup(' + idx + ')">展开</button>';
+            groupEl.appendChild(headerEl);
+
+            const gridEl = document.createElement("div");
+            gridEl.className = "card-grid group-cards";
+            group.posts.forEach(function(post) {
+                gridEl.appendChild(createCard(post));
+            });
+            groupEl.appendChild(gridEl);
+
+            container.appendChild(groupEl);
         });
-        updateBatchBar();
-    });
-
-    function updateBatchBar() {
-        const bar = document.getElementById("batchBar");
-        const count = selectedIds.size;
-        document.getElementById("selectedCount").textContent = count;
-        bar.classList.toggle("active", count > 0);
     }
 
-    function renderCards(posts) {
-        const grid = document.getElementById("cardGrid");
-        grid.innerHTML = "";
-        document.getElementById("selectAll").checked = false;
-        appendCards(posts);
-    }
+    window.toggleGroup = function(idx) {
+        const group = document.getElementById("group-" + idx);
+        const wasExpanded = group.classList.contains("expanded");
+        document.querySelectorAll(".date-group").forEach(function(g) { g.classList.remove("expanded"); });
+        document.querySelectorAll(".sticky-date-btn").forEach(function(b) { b.classList.remove("active"); });
+        if (!wasExpanded) {
+            group.classList.add("expanded");
+            var btn = document.querySelector('.sticky-date-btn[data-group="' + idx + '"]');
+            if (btn) btn.classList.add("active");
+        }
+    };
 
-    function appendCards(posts) {
-        const grid = document.getElementById("cardGrid");
-        posts.forEach(post => {
-            const card = document.createElement("div");
-            card.className = "card";
+    function createCard(post) {
+        const card = document.createElement("div");
+        card.className = "card";
 
-            let images = [];
-            try { images = JSON.parse(post.images || "[]"); } catch(e) {}
-            const rawImage = images[0] || "";
-            const image = rawImage ? ("/api/proxy_image?url=" + encodeURIComponent(rawImage)) : "";
+        var images = [];
+        try { images = JSON.parse(post.images || "[]"); } catch(e) {}
+        var rawImage = images[0] || "";
+        var image = rawImage ? (rawImage.indexOf("/images/") === 0 ? rawImage : "/api/proxy_image?url=" + encodeURIComponent(rawImage)) : "";
 
-            const platformTags = {
-                pc: '<span class="tag tag-pc">PC</span>',
-                android: '<span class="tag tag-android">安卓</span>',
-                pc_android: '<span class="tag tag-pc">PC</span><span class="tag tag-android">安卓</span>',
-                unknown: '<span class="tag tag-pc">未知</span>'
-            };
-            const platformTag = platformTags[post.platform] || platformTags.unknown;
+        var platformTags = {
+            pc: '<span class="tag tag-pc">PC</span>',
+            android: '<span class="tag tag-android">安卓</span>',
+            pc_android: '<span class="tag tag-pc">PC</span><span class="tag tag-android">安卓</span>',
+            unknown: '<span class="tag tag-pc">未知</span>'
+        };
+        var platformTag = platformTags[post.platform] || platformTags.unknown;
 
-            const hasDual = post.baidu_link && post.mobile_link;
-            const dualTag = hasDual ? '<span class="tag tag-dual">双网盘</span>' : '';
+        var hasDual = post.baidu_link && post.mobile_link;
+        var dualTag = hasDual ? '<span class="tag tag-dual">双网盘</span>' : '';
 
-            let linksHtml = "";
-            if (post.baidu_link) {
-                linksHtml += `<a href="${post.baidu_link}" class="link-btn link-baidu" target="_blank">百度网盘${post.baidu_code ? ' ('+post.baidu_code+')' : ''}</a>`;
+        var linksHtml = "";
+        if (post.baidu_link) {
+            linksHtml += '<a href="' + post.baidu_link + '" class="link-btn link-baidu" target="_blank">百度网盘' + (post.baidu_code ? ' ('+post.baidu_code+')' : '') + '</a>';
+        }
+        if (post.mobile_link) {
+            linksHtml += '<a href="' + post.mobile_link + '" class="link-btn link-mobile" target="_blank">移动云盘' + (post.mobile_code ? ' ('+post.mobile_code+')' : '') + '</a>';
+        }
+        linksHtml += '<a href="' + post.source_url + '" class="link-btn link-source" target="_blank">原帖</a>';
+
+        var footerHtml = "";
+        if (post.unzip_code || post.cheat_code) {
+            footerHtml = '<div class="card-footer"><div class="footer-left">';
+            if (post.unzip_code) {
+                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="解压码：' + post.unzip_code + '" onclick="copyText(this)">解压码</button>';
             }
-            if (post.mobile_link) {
-                linksHtml += `<a href="${post.mobile_link}" class="link-btn link-mobile" target="_blank">移动云盘${post.mobile_code ? ' ('+post.mobile_code+')' : ''}</a>`;
+            if (post.cheat_code) {
+                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="作弊码：' + post.cheat_code + '" onclick="copyText(this)">作弊码</button>';
             }
-            linksHtml += `<a href="${post.source_url}" class="link-btn link-source" target="_blank">原帖</a>`;
+            footerHtml += '</div></div>';
+        }
 
-            let footerHtml = "";
-            if (post.unzip_code || post.cheat_code) {
-                footerHtml = '<div class="card-footer"><div class="footer-left">';
-                if (post.unzip_code) footerHtml += `<span>解压码: <span class="copy-text" data-copy="解压码：${post.unzip_code}" onclick="copyText(this)">${post.unzip_code}</span></span>`;
-                if (post.cheat_code) footerHtml += `<span>作弊码: <span class="copy-text" data-copy="作弊码：${post.cheat_code}" onclick="copyText(this)">${post.cheat_code}</span></span>`;
-                footerHtml += '</div></div>';
-            }
+        var statsHtml = '';
+        if (post.source !== '萌幻ACG') {
+            statsHtml = '<div class="card-stats"><span class="stat-item">❤ ' + (post.likes || 0) + '</span><span class="stat-item">💬 ' + (post.comments || 0) + '</span><span class="stat-item">👁 ' + formatNumber(post.views || 0) + '</span></div>';
+        }
 
-            card.innerHTML = `
-                <div class="card-header">
-                    <div class="card-select"><input type="checkbox" data-id="${post.id}" onchange="toggleSelect(this)"></div>
-                    <div class="card-tags">${platformTag}${dualTag}<span class="tag tag-source">${post.source}</span></div>
-                    <span class="tag tag-date">${post.post_date || ''}</span>
-                </div>
-                <div class="card-images">
-                    <img src="${image}" alt="" onerror="this.style.display='none'">
-                </div>
-                <div class="card-body">
-                    <div class="card-title">${post.title}</div>
-                    <div class="card-stats">
-                        <span class="stat-item">❤ ${post.likes || 0}</span>
-                        <span class="stat-item">💬 ${post.comments || 0}</span>
-                        <span class="stat-item">👁 ${formatNumber(post.views || 0)}</span>
-                    </div>
-                    <div class="card-links">${linksHtml}</div>
-                </div>
-                ${footerHtml}
-                <div class="card-actions">
-                    <button class="btn btn-sm btn-danger" onclick="deletePost(${post.id})">删除</button>
-                </div>
-            `;
-            grid.appendChild(card);
-        });
+        card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images"><img src="' + image + '" alt="" onerror="this.style.display=\'none\'"></div><div class="card-body"><div class="card-title">' + post.title + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div></div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
+        return card;
     }
 
     function formatNumber(n) {
@@ -269,14 +266,28 @@ document.addEventListener("DOMContentLoaded", function() {
         return n;
     }
 
+    // 全选/取消全选
+    document.getElementById("selectAll").addEventListener("change", function() {
+        var checked = this.checked;
+        document.querySelectorAll(".card-select input[type='checkbox']").forEach(function(cb) {
+            cb.checked = checked;
+            var id = parseInt(cb.dataset.id);
+            if (checked) { selectedIds.add(id); } else { selectedIds.delete(id); }
+        });
+        updateBatchBar();
+    });
+
+    function updateBatchBar() {
+        var bar = document.getElementById("batchBar");
+        var count = selectedIds.size;
+        document.getElementById("selectedCount").textContent = count;
+        bar.classList.toggle("active", count > 0);
+    }
+
     // 单选切换
     window.toggleSelect = function(cb) {
-        const id = parseInt(cb.dataset.id);
-        if (cb.checked) {
-            selectedIds.add(id);
-        } else {
-            selectedIds.delete(id);
-        }
+        var id = parseInt(cb.dataset.id);
+        if (cb.checked) { selectedIds.add(id); } else { selectedIds.delete(id); }
         updateBatchBar();
     };
 
@@ -287,18 +298,18 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({id: id})
-        }).then(() => loadPosts());
+        }).then(function() { loadPosts(); });
     };
 
     // 批量删除
     document.getElementById("batchDeleteBtn").addEventListener("click", function() {
         if (selectedIds.size === 0) return;
-        if (!confirm(`确定删除选中的 ${selectedIds.size} 条记录？`)) return;
+        if (!confirm("确定删除选中的 " + selectedIds.size + " 条记录？")) return;
         fetch("/api/batch_delete", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({ids: Array.from(selectedIds)})
-        }).then(() => {
+        }).then(function() {
             selectedIds.clear();
             loadPosts();
         });
@@ -307,38 +318,26 @@ document.addEventListener("DOMContentLoaded", function() {
     // 批量导出选中
     document.getElementById("batchExportBtn").addEventListener("click", function() {
         if (selectedIds.size === 0) return;
-        const ids = Array.from(selectedIds).join(",");
+        var ids = Array.from(selectedIds).join(",");
         window.location.href = "/api/export_download?type=selected&ids=" + ids;
     });
 
     // 加载历史
     function loadHistory() {
         fetch("/api/tasks")
-            .then(r => r.json())
-            .then(data => {
-                const tbody = document.getElementById("historyBody");
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById("historyBody");
                 tbody.innerHTML = "";
-                data.forEach(task => {
-                    const tr = document.createElement("tr");
-                    const statusBadge = {
+                data.forEach(function(task) {
+                    var tr = document.createElement("tr");
+                    var statusBadge = {
                         completed: '<span class="badge badge-success">完成</span>',
                         running: '<span class="badge badge-warning">运行中</span>',
                         failed: '<span class="badge badge-error">失败</span>',
                         cancelled: '<span class="badge badge-warning">已取消</span>',
                     }[task.status] || task.status;
-                    tr.innerHTML = `
-                        <td>${task.id}</td>
-                        <td>${task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期'}</td>
-                        <td>${task.sites || ''}</td>
-                        <td>${statusBadge}</td>
-                        <td>${task.success_posts}</td>
-                        <td>${task.skipped_posts}</td>
-                        <td>${task.error_posts}</td>
-                        <td>${task.created_at || ''}</td>
-                        <td>
-                            <button class="btn btn-sm btn-danger" onclick="deleteTask(${task.id})">删除</button>
-                        </td>
-                    `;
+                    tr.innerHTML = '<td>' + task.id + '</td><td>' + (task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期') + '</td><td>' + (task.sites || '') + '</td><td>' + statusBadge + '</td><td>' + task.success_posts + '</td><td>' + task.skipped_posts + '</td><td>' + task.error_posts + '</td><td>' + (task.created_at || '') + '</td><td><button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
                     tbody.appendChild(tr);
                 });
             });
@@ -350,14 +349,14 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({id: id})
-        }).then(() => loadHistory());
+        }).then(function() { loadHistory(); });
     };
 
     // 导出页面
     function loadExportInfo() {
         fetch("/api/posts?limit=1")
-            .then(r => r.json())
-            .then(data => {
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
                 document.getElementById("exportTotal").textContent = data.total;
             });
     }
@@ -368,16 +367,16 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 });
 
-// 复制文本 - 复制完整文本（含前缀）
+// 复制文本
 function copyText(el) {
-    const text = el.dataset.copy || el.textContent;
+    var text = el.dataset.copy || el.textContent;
     navigator.clipboard.writeText(text).then(function() {
-        el.classList.add("copied");
-        const orig = el.textContent;
+        var orig = el.textContent;
         el.textContent = "已复制!";
+        el.disabled = true;
         setTimeout(function() {
-            el.classList.remove("copied");
             el.textContent = orig;
+            el.disabled = false;
         }, 800);
     });
 }

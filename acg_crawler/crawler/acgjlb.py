@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from crawler.base import BaseCrawler
 from parser import extract_links, extract_cloud_name, extract_cheat_code
-from parser.image_handler import download_images
+from parser.image_handler import download_images, get_web_path
 
 class ACGJLBCrawler(BaseCrawler):
     """ACG俱乐部爬虫"""
@@ -63,6 +63,12 @@ class ACGJLBCrawler(BaseCrawler):
             num = title_match.group(1)
             rest = title_match.group(2)
             title = f"{rest} {num}"
+
+        # 标题末尾]后面的数字移到标题区后面（如 ...joi]5286 1648 → ...joi] 5286 1648）
+        end_match = re.search(r'\](\d[\d\s]*\d)\s*$', title)
+        if end_match:
+            nums = end_match.group(1).strip()
+            title = title[:end_match.start(1)].rstrip() + " " + nums
 
         # 内容 - ACG俱乐部使用 div.wp-posts-content
         content_el = soup.select_one("div.wp-posts-content")
@@ -125,11 +131,8 @@ class ACGJLBCrawler(BaseCrawler):
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
 
-        # 提取解压码
-        unzip_code = ""
-        code_match = re.search(r'(?:解压码|解压密码|密码)[：:\s]*(\S+)', content)
-        if code_match:
-            unzip_code = code_match.group(1)
+        # 提取解压码（ACG俱乐部固定为007721）
+        unzip_code = "007721"
 
         # 判断平台 - 优先从分类标签判断
         platform = "unknown"
@@ -156,7 +159,7 @@ class ACGJLBCrawler(BaseCrawler):
             proxy = self.config["proxy"]["http"]
         local_images = download_images(images[:3], self.site_name, proxy=proxy)
         if local_images:
-            images = [f"/images/{self.site_name}/{Path(p).name}" for p in local_images]
+            images = [get_web_path(p, self.site_name) for p in local_images]
 
         return {
             "source": self.site_name,

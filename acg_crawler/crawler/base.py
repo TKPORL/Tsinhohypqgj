@@ -21,7 +21,8 @@ class BaseCrawler(ABC):
         self._setup_proxy()
 
     def _setup_proxy(self):
-        if self.config.get("proxy", {}).get("enabled"):
+        self._proxy_enabled = self.config.get("proxy", {}).get("enabled", False)
+        if self._proxy_enabled:
             proxy = self.config["proxy"]["http"]
             self.session.proxies = {"http": proxy, "https": proxy}
 
@@ -38,6 +39,16 @@ class BaseCrawler(ABC):
                 resp.raise_for_status()
                 return resp
             except Exception as e:
+                # 代理失败时尝试直连
+                if self._proxy_enabled and attempt == 0:
+                    try:
+                        old_proxies = self.session.proxies.copy()
+                        self.session.proxies = {}
+                        resp = self.session.get(url, timeout=self.config.get("crawler", {}).get("timeout", 15))
+                        resp.raise_for_status()
+                        return resp
+                    except:
+                        self.session.proxies = old_proxies
                 if attempt < retries - 1:
                     time.sleep(self.config.get("crawler", {}).get("retry_delay", 2) * (attempt + 1))
                 else:

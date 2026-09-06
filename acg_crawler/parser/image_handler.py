@@ -7,9 +7,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 IMAGES_DIR = Path(__file__).parent.parent / "images"
 
+def _source_hash(source):
+    """生成来源名的短hash，用于目录名（避免中文路径编码问题）"""
+    return hashlib.md5(source.encode("utf-8")).hexdigest()[:10]
+
 def get_image_dir(source):
-    """获取图片存储目录"""
-    dir_path = IMAGES_DIR / source
+    """获取图片存储目录（用hash命名）"""
+    dir_path = IMAGES_DIR / _source_hash(source)
     dir_path.mkdir(parents=True, exist_ok=True)
     return dir_path
 
@@ -62,7 +66,7 @@ def download_image(url, source, proxy=None, timeout=30):
         return None
 
 def download_images(urls, source, proxy=None, max_workers=4):
-    """批量下载图片"""
+    """批量下载图片，返回本地路径列表"""
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
@@ -77,3 +81,9 @@ def download_images(urls, source, proxy=None, max_workers=4):
             except Exception:
                 pass
     return results
+
+def get_web_path(local_path, source):
+    """将本地路径转为Flask可服务的web路径：/images/<hash>/<filename>"""
+    from pathlib import Path as _P
+    filename = _P(local_path).name
+    return f"/images/{_source_hash(source)}/{filename}"
