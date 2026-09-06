@@ -15,8 +15,9 @@ class ACGLLCrawler(BaseCrawler):
         url = f"{self.base_url}/category/youxi/page/{page_num}"
         soup = self._soup(url)
         links = []
-        for article in soup.select("article.post-item, div.post-item"):
-            a = article.select_one("h2 a, .post-title a, a.post-title")
+        # ACG图书馆使用Zibll 8.8主题，帖子在 posts.posts-item 元素中
+        for item in soup.select("posts.posts-item"):
+            a = item.select_one("h2.item-heading > a")
             if a and a.get("href"):
                 link = a["href"]
                 if not link.startswith("http"):
@@ -27,11 +28,13 @@ class ACGLLCrawler(BaseCrawler):
     def parse_detail(self, url):
         soup = self._soup(url)
 
-        title_el = soup.select_one("h1.entry-title, h1.post-title, .article-title h1")
+        # 标题 - ACG图书馆使用 h1.article-title
+        title_el = soup.select_one("h1.article-title")
         title = title_el.get_text(strip=True) if title_el else ""
 
-        content_el = soup.select_one(".entry-content, .post-content, .article-content")
-        content = content_el.get_text(strip=True) if content_el else ""
+        # 内容 - ACG图书馆使用 div.wp-posts-content
+        content_el = soup.select_one("div.wp-posts-content")
+        content = content_el.get_text(separator="\n", strip=True) if content_el else ""
 
         # 提取图片
         images = []
@@ -48,14 +51,14 @@ class ACGLLCrawler(BaseCrawler):
         comments = 0
         views = 0
 
-        likes_el = soup.select_one(".meta-like, .like-count")
+        likes_el = soup.select_one(".content-footer-zan-cai .like-count, .meta-like")
         if likes_el:
             try:
                 likes = int(re.sub(r'[^\d]', '', likes_el.get_text(strip=True)) or 0)
             except:
                 pass
 
-        comments_el = soup.select_one(".meta-comment, .comments-number")
+        comments_el = soup.select_one(".comments-number, .meta-comm")
         if comments_el:
             try:
                 comments = int(re.sub(r'[^\d]', '', comments_el.get_text(strip=True)) or 0)
@@ -71,9 +74,9 @@ class ACGLLCrawler(BaseCrawler):
 
         # 提取发布日期
         post_date = ""
-        date_el = soup.select_one("time.post-date, .entry-date time")
+        date_el = soup.select_one("time.post-date, .entry-date time, .post-meta time")
         if date_el:
-            post_date = date_el.get("datetime", "") or date_el.get_text(strip=True)
+            post_date = date_el.get("datetime", "")[:10]
 
         # 提取网盘链接
         links = extract_links(content)
@@ -126,7 +129,8 @@ class ACGLLCrawler(BaseCrawler):
         try:
             url = f"{self.base_url}/category/youxi"
             soup = self._soup(url)
-            page_links = soup.select("ul.pagination a")
+            # ACG图书馆使用Zibll主题分页
+            page_links = soup.select("div.pagenav a, a.page-numbers")
             max_page = 1
             for a in page_links:
                 text = a.get_text(strip=True)

@@ -15,14 +15,16 @@ class ACGJLBCrawler(BaseCrawler):
         url = f"{self.base_url}/acggame?page={page_num}"
         soup = self._soup(url)
         links = []
-        for item in soup.select("div.post-item, article.post-item, div.list-item"):
-            a = item.select_one("h2 a, .post-title a, a.post-title, a.title")
+        # ACG俱乐部使用Zibll主题，帖子在 posts.posts-item 元素中
+        for item in soup.select("posts.posts-item"):
+            a = item.select_one("h2.item-heading > a")
             if a and a.get("href"):
                 link = a["href"]
                 if not link.startswith("http"):
                     link = self.base_url + link
                 links.append(link)
 
+        # 备用选择器
         if not links:
             for a in soup.select("a[href*='/acggame/']"):
                 href = a.get("href", "")
@@ -36,11 +38,13 @@ class ACGJLBCrawler(BaseCrawler):
     def parse_detail(self, url):
         soup = self._soup(url)
 
-        title_el = soup.select_one("h1.entry-title, h1.post-title, .article-title h1, h1")
+        # 标题 - ACG俱乐部使用 h1.article-title
+        title_el = soup.select_one("h1.article-title")
         title = title_el.get_text(strip=True) if title_el else ""
 
-        content_el = soup.select_one(".entry-content, .post-content, .article-content, .content")
-        content = content_el.get_text(strip=True) if content_el else ""
+        # 内容 - ACG俱乐部使用 div.wp-posts-content
+        content_el = soup.select_one("div.wp-posts-content")
+        content = content_el.get_text(separator="\n", strip=True) if content_el else ""
 
         # 提取图片
         images = []
@@ -52,26 +56,26 @@ class ACGJLBCrawler(BaseCrawler):
                         src = self.base_url + src
                     images.append(src)
 
-        # 提取互动数据
+        # 提取互动数据 - ACG俱乐部在列表页就有互动数据
         likes = 0
         comments = 0
         views = 0
 
-        likes_el = soup.select_one(".like-count, .likes-num, .post-like")
+        likes_el = soup.select_one(".content-footer-zan-cai .like-count, .meta-like")
         if likes_el:
             try:
                 likes = int(re.sub(r'[^\d]', '', likes_el.get_text(strip=True)) or 0)
             except:
                 pass
 
-        comments_el = soup.select_one(".comments-num, .comment-count")
+        comments_el = soup.select_one(".comments-number, .meta-comm")
         if comments_el:
             try:
                 comments = int(re.sub(r'[^\d]', '', comments_el.get_text(strip=True)) or 0)
             except:
                 pass
 
-        views_el = soup.select_one(".views-num, .post-views, .view-count")
+        views_el = soup.select_one(".meta-view, .views-num")
         if views_el:
             try:
                 views_text = views_el.get_text(strip=True).replace("W+", "0000").replace("w+", "0000")
@@ -81,9 +85,9 @@ class ACGJLBCrawler(BaseCrawler):
 
         # 提取发布日期
         post_date = ""
-        date_el = soup.select_one("time.post-date, .entry-date time, .post-time")
+        date_el = soup.select_one("time.post-date, .entry-date time, .post-meta time")
         if date_el:
-            post_date = date_el.get("datetime", "") or date_el.get_text(strip=True)
+            post_date = date_el.get("datetime", "")[:10]
 
         # 提取网盘链接
         links = extract_links(content)
@@ -136,7 +140,8 @@ class ACGJLBCrawler(BaseCrawler):
         try:
             url = f"{self.base_url}/acggame"
             soup = self._soup(url)
-            page_links = soup.select("a[href*='page=']")
+            # ACG俱乐部使用Zibll主题分页
+            page_links = soup.select("div.pagenav a, a[href*='page=']")
             max_page = 1
             for a in page_links:
                 href = a.get("href", "")

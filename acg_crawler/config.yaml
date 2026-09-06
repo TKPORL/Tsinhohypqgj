@@ -56,7 +56,7 @@ sites:
 
   acgrx:
     name: "萌幻ACG"
-    base_url: "https://bbs.acgrx.com"
+    base_url: "https://bbs4.acgrx.com"
     list_path: "/page/{page}"
     detail_path: "/game/{id}.html"
     enabled: true

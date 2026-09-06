@@ -9,29 +9,27 @@ class ACGRXCrawler(BaseCrawler):
     def __init__(self, config):
         super().__init__(config)
         self.site_name = "萌幻ACG"
-        self.base_url = "https://bbs.acgrx.com"
+        self.base_url = "https://bbs4.acgrx.com"
         self.logged_in = False
         self._login()
 
     def _login(self):
         """自动登录"""
         try:
-            login_url = f"{self.base_url}/admin/login"
-            soup = self._soup(login_url)
+            login_page_url = f"{self.base_url}/adminacgrx/login.php"
+            soup = self._soup(login_page_url)
 
             # 查找登录表单
-            form = soup.select_one("form[type='dialog']")
+            form = soup.select_one("form[name='login']")
             if not form:
                 print(f"[{self.site_name}] 未找到登录表单")
                 return
 
-            # 获取token
-            token_input = soup.select_one("input[name='_token']")
-            token = token_input["value"] if token_input else ""
-
-            # 获取remember字段
-            remember_input = soup.select_one("input[name='remember']")
-            remember = "on" if remember_input else ""
+            # 获取action URL
+            action = form.get("action", "")
+            if not action:
+                print(f"[{self.site_name}] 未找到登录action")
+                return
 
             email = self.config.get("acgrx", {}).get("email", "")
             password = self.config.get("acgrx", {}).get("password", "")
@@ -44,12 +42,12 @@ class ACGRXCrawler(BaseCrawler):
             login_data = {
                 "name": email,
                 "password": password,
-                "remember": remember,
-                "_token": token,
+                "remember": "1",
+                "referer": "",
             }
 
             resp = self.session.post(
-                login_url,
+                action,
                 data=login_data,
                 timeout=15,
                 allow_redirects=True
@@ -65,7 +63,10 @@ class ACGRXCrawler(BaseCrawler):
             print(f"[{self.site_name}] 登录出错: {e}")
 
     def get_list_page(self, page_num):
-        url = f"{self.base_url}/page/{page_num}"
+        if page_num == 1:
+            url = self.base_url
+        else:
+            url = f"{self.base_url}/page/{page_num}"
         soup = self._soup(url)
         links = []
         for item in soup.select("div.post-item"):
@@ -74,17 +75,25 @@ class ACGRXCrawler(BaseCrawler):
                 link = a["href"]
                 if not link.startswith("http"):
                     link = self.base_url + link
+                # 过滤掉广告链接
+                if "fengyueai.me" in link or "mofacga.com" in link:
+                    continue
                 links.append(link)
         return links
 
     def parse_detail(self, url):
         soup = self._soup(url)
 
-        title_el = soup.select_one("h1.entry-title, .post-title, article h1")
+        # 标题
+        title_el = soup.select_one("div.post-contentr h1")
         title = title_el.get_text(strip=True) if title_el else ""
 
-        content_el = soup.select_one(".post-content, .entry-content, article .content")
-        content = content_el.get_text(strip=True) if content_el else ""
+        # 内容
+        content_el = soup.select_one("div.post-contentr")
+        content = ""
+        if content_el:
+            # 获取所有文本内容
+            content = content_el.get_text(separator="\n", strip=True)
 
         # 提取图片
         images = []
@@ -96,44 +105,16 @@ class ACGRXCrawler(BaseCrawler):
                         src = self.base_url + src
                     images.append(src)
 
-        # 提取互动数据
+        # 提取互动数据 (萌幻ACG没有互动数据)
         likes = 0
         comments = 0
         views = 0
 
-        likes_el = soup.select_one(".post-like .like-count, .likes-num")
-        if likes_el:
-            try:
-                likes = int(re.sub(r'[^\d]', '', likes_el.get_text(strip=True)) or 0)
-            except:
-                pass
-
-        comments_el = soup.select_one(".comments-num, .comment-count")
-        if comments_el:
-            try:
-                comments = int(re.sub(r'[^\d]', '', comments_el.get_text(strip=True)) or 0)
-            except:
-                pass
-
-        views_el = soup.select_one(".post-views, .views-num")
-        if views_el:
-            try:
-                views = int(re.sub(r'[^\d]', '', views_el.get_text(strip=True)) or 0)
-            except:
-                pass
-
         # 提取发布日期
         post_date = ""
-        date_el = soup.select_one("time.post-time, .post-date time")
+        date_el = soup.select_one("div.post-contentr time[datetime]")
         if date_el:
-            post_date = date_el.get("datetime", "") or date_el.get_text(strip=True)
-        if not post_date:
-            time_el = soup.select_one("span.post-time[data-timestamp]")
-            if time_el:
-                ts = time_el.get("data-timestamp", "")
-                if ts.isdigit():
-                    import datetime
-                    post_date = datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d")
+            post_date = date_el.get("datetime", "")[:10]
 
         # 提取网盘链接
         links = extract_links(content)
@@ -185,7 +166,7 @@ class ACGRXCrawler(BaseCrawler):
     def get_total_pages(self):
         try:
             soup = self._soup(self.base_url)
-            page_links = soup.select("div.pagination a")
+            page_links = soup.select("div.pagination a, a[href*='/page/']")
             max_page = 1
             for a in page_links:
                 href = a.get("href", "")
