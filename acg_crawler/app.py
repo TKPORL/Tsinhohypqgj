@@ -1,10 +1,10 @@
 """ACG资源聚合爬取工具 - 主程序"""
 import json
 import threading
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 
 from config import load_config
-from database import init_db, get_posts, get_post_count, delete_post, get_tasks, delete_task
+from database import init_db, get_posts, get_post_count, delete_post, get_tasks, delete_task, get_conn
 from crawler import CrawlerEngine
 from generator import export_posts
 
@@ -112,11 +112,60 @@ def api_delete_task():
         delete_task(task_id)
     return jsonify({"status": "ok"})
 
-@app.route("/api/export", methods=["POST"])
+@app.route("/api/batch_delete", methods=["POST"])
+def api_batch_delete():
+    data = request.json
+    ids = data.get("ids", [])
+    if ids:
+        with get_conn() as conn:
+            placeholders = ",".join("?" * len(ids))
+            conn.execute(f"DELETE FROM posts WHERE id IN ({placeholders})", ids)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/export")
 def api_export():
     posts = get_posts(limit=10000)
     result = export_posts(posts)
     return jsonify({"status": "ok", "files": result})
+
+@app.route("/api/export_download")
+def api_export_download():
+    export_type = request.args.get("type", "all")
+    selected_ids = request.args.get("ids", "")
+
+    if export_type == "selected" and selected_ids:
+        id_list = [int(i) for i in selected_ids.split(",") if i.strip()]
+        with get_conn() as conn:
+            placeholders = ",".join("?" * len(id_list))
+            rows = conn.execute(
+                f"SELECT * FROM posts WHERE id IN ({placeholders}) ORDER BY id",
+                id_list
+            ).fetchall()
+            posts = [dict(row) for row in rows]
+    else:
+        platform_filter = request.args.get("platform", "")
+        if export_type == "pc":
+            posts = get_posts(platform="pc", limit=10000)
+        elif export_type == "mixed":
+            posts = get_posts(platform="pc_android", limit=10000)
+            pc_posts = get_posts(platform="pc", limit=10000)
+            posts = pc_posts + posts
+        else:
+            posts = get_posts(limit=10000)
+
+    result = export_posts(posts)
+
+    if export_type == "pc" or export_type == "selected":
+        filepath = result.get("pc", "")
+    else:
+        filepath = result.get("mixed", "")
+
+    if filepath:
+        import os
+        filename = os.path.basename(filepath)
+        return send_file(filepath, as_attachment=True, download_name=filename)
+
+    return jsonify({"status": "error", "message": "无数据可导出"})
 
 if __name__ == "__main__":
     flask_config = config.get("flask", {})

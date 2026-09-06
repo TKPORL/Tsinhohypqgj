@@ -147,10 +147,10 @@ def generate_html(posts, title, filename):
 
 def export_posts(posts):
     """导出帖子为HTML"""
-    pc_posts = [p for p in posts if p.get("platform") in ("pc", "unknown")]
-    mixed_posts = [p for p in posts if p.get("platform") in ("pc", "pc_android", "unknown")]
+    pc_posts = [p for p in posts if p.get("platform") in ("pc",)]
+    mixed_posts = [p for p in posts if p.get("platform") in ("pc", "pc_android")]
 
-    pc_file = generate_html(pc_posts, "ACG游戏资源 - PC", "PC.html")
-    mixed_file = generate_html(mixed_posts, "ACG游戏资源 - PC+安卓", "PC+安卓.html")
+    pc_file = generate_html(pc_posts, "ACG游戏资源 - PC下载", "PC下载.html")
+    mixed_file = generate_html(mixed_posts, "ACG游戏资源 - PC+安卓下载", "PC+安卓下载.html")
 
     return {"pc": pc_file, "mixed": mixed_file}

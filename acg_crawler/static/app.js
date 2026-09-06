@@ -131,10 +131,14 @@ document.addEventListener("DOMContentLoaded", function() {
         }, 1000);
     }
 
-    // 加载帖子
+    // ========== 结果面板 - 多选 + 批量操作 ==========
     let postOffset = 0;
+    const selectedIds = new Set();
+
     function loadPosts() {
         postOffset = 0;
+        selectedIds.clear();
+        updateBatchBar();
         const source = document.getElementById("filterSource").value;
         const platform = document.getElementById("filterPlatform").value;
         fetch(`/api/posts?source=${source}&platform=${platform}&limit=50&offset=0`)
@@ -164,9 +168,32 @@ document.addEventListener("DOMContentLoaded", function() {
             });
     });
 
+    // 全选/取消全选
+    document.getElementById("selectAll").addEventListener("change", function() {
+        const checked = this.checked;
+        document.querySelectorAll(".card-select input[type='checkbox']").forEach(cb => {
+            cb.checked = checked;
+            const id = parseInt(cb.dataset.id);
+            if (checked) {
+                selectedIds.add(id);
+            } else {
+                selectedIds.delete(id);
+            }
+        });
+        updateBatchBar();
+    });
+
+    function updateBatchBar() {
+        const bar = document.getElementById("batchBar");
+        const count = selectedIds.size;
+        document.getElementById("selectedCount").textContent = count;
+        bar.classList.toggle("active", count > 0);
+    }
+
     function renderCards(posts) {
         const grid = document.getElementById("cardGrid");
         grid.innerHTML = "";
+        document.getElementById("selectAll").checked = false;
         appendCards(posts);
     }
 
@@ -188,7 +215,6 @@ document.addEventListener("DOMContentLoaded", function() {
             };
             const platformTag = platformTags[post.platform] || platformTags.unknown;
 
-            // 双网盘标识
             const hasDual = post.baidu_link && post.mobile_link;
             const dualTag = hasDual ? '<span class="tag tag-dual">双网盘</span>' : '';
 
@@ -204,13 +230,14 @@ document.addEventListener("DOMContentLoaded", function() {
             let footerHtml = "";
             if (post.unzip_code || post.cheat_code) {
                 footerHtml = '<div class="card-footer"><div class="footer-left">';
-                if (post.unzip_code) footerHtml += `<span>解压码: <span class="copy-text" onclick="copyText(this)">${post.unzip_code}</span></span>`;
-                if (post.cheat_code) footerHtml += `<span>作弊码: <span class="copy-text" onclick="copyText(this)">${post.cheat_code}</span></span>`;
+                if (post.unzip_code) footerHtml += `<span>解压码: <span class="copy-text" data-copy="解压码：${post.unzip_code}" onclick="copyText(this)">${post.unzip_code}</span></span>`;
+                if (post.cheat_code) footerHtml += `<span>作弊码: <span class="copy-text" data-copy="作弊码：${post.cheat_code}" onclick="copyText(this)">${post.cheat_code}</span></span>`;
                 footerHtml += '</div></div>';
             }
 
             card.innerHTML = `
                 <div class="card-header">
+                    <div class="card-select"><input type="checkbox" data-id="${post.id}" onchange="toggleSelect(this)"></div>
                     <div class="card-tags">${platformTag}${dualTag}<span class="tag tag-source">${post.source}</span></div>
                     <span class="tag tag-date">${post.post_date || ''}</span>
                 </div>
@@ -241,6 +268,17 @@ document.addEventListener("DOMContentLoaded", function() {
         return n;
     }
 
+    // 单选切换
+    window.toggleSelect = function(cb) {
+        const id = parseInt(cb.dataset.id);
+        if (cb.checked) {
+            selectedIds.add(id);
+        } else {
+            selectedIds.delete(id);
+        }
+        updateBatchBar();
+    };
+
     // 删除帖子
     window.deletePost = function(id) {
         if (!confirm("确定删除这条记录？")) return;
@@ -250,6 +288,27 @@ document.addEventListener("DOMContentLoaded", function() {
             body: JSON.stringify({id: id})
         }).then(() => loadPosts());
     };
+
+    // 批量删除
+    document.getElementById("batchDeleteBtn").addEventListener("click", function() {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`确定删除选中的 ${selectedIds.size} 条记录？`)) return;
+        fetch("/api/batch_delete", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ids: Array.from(selectedIds)})
+        }).then(() => {
+            selectedIds.clear();
+            loadPosts();
+        });
+    });
+
+    // 批量导出选中
+    document.getElementById("batchExportBtn").addEventListener("click", function() {
+        if (selectedIds.size === 0) return;
+        const ids = Array.from(selectedIds).join(",");
+        window.location.href = "/api/export_download?type=selected&ids=" + ids;
+    });
 
     // 加载历史
     function loadHistory() {
@@ -268,7 +327,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     }[task.status] || task.status;
                     tr.innerHTML = `
                         <td>${task.id}</td>
-                        <td>${task.task_type === 'by_page' ? '按页码' : '按日期'}</td>
+                        <td>${task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期'}</td>
                         <td>${task.sites || ''}</td>
                         <td>${statusBadge}</td>
                         <td>${task.success_posts}</td>
@@ -276,7 +335,6 @@ document.addEventListener("DOMContentLoaded", function() {
                         <td>${task.error_posts}</td>
                         <td>${task.created_at || ''}</td>
                         <td>
-                            <button class="btn btn-sm" onclick="downloadHtml()">下载HTML</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteTask(${task.id})">删除</button>
                         </td>
                     `;
@@ -294,16 +352,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }).then(() => loadHistory());
     };
 
-    window.downloadHtml = function() {
-        fetch("/api/export", {method: "POST"})
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === "ok") {
-                    alert("导出完成！文件已保存到 output 目录。\n" + data.files.pc + "\n" + data.files.mixed);
-                }
-            });
-    };
-
     // 导出页面
     function loadExportInfo() {
         fetch("/api/posts?limit=1")
@@ -313,21 +361,15 @@ document.addEventListener("DOMContentLoaded", function() {
             });
     }
 
-    window.doExport = function() {
-        fetch("/api/export", {method: "POST"})
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === "ok") {
-                    document.getElementById("exportInfo").style.display = "block";
-                    document.getElementById("exportPcFile").textContent = data.files.pc;
-                    document.getElementById("exportMixedFile").textContent = data.files.mixed;
-                }
-            });
+    // 直接下载导出文件
+    window.doExport = function(type) {
+        window.location.href = "/api/export_download?type=" + type;
     };
 });
 
+// 复制文本 - 复制完整文本（含前缀）
 function copyText(el) {
-    const text = el.textContent;
+    const text = el.dataset.copy || el.textContent;
     navigator.clipboard.writeText(text).then(function() {
         el.classList.add("copied");
         const orig = el.textContent;

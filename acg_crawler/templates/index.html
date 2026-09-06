@@ -123,8 +123,13 @@
                             <option value="android">仅安卓</option>
                         </select>
                         <span class="result-count">共 <strong id="resultCount">0</strong> 条</span>
-                        <button class="btn btn-sm" onclick="downloadHtml()">下载HTML</button>
                     </div>
+                </div>
+                <div class="batch-bar" id="batchBar">
+                    <label class="checkbox-label"><input type="checkbox" id="selectAll"> 全选</label>
+                    <span class="selected-count">已选 <strong id="selectedCount">0</strong> 条</span>
+                    <button class="btn btn-sm btn-danger" id="batchDeleteBtn">批量删除</button>
+                    <button class="btn btn-sm" id="batchExportBtn">导出选中</button>
                 </div>
                 <div class="card-grid" id="cardGrid"></div>
                 <div class="load-more hidden" id="loadMore">
@@ -166,21 +171,16 @@
                 <div class="export-cards">
                     <div class="export-card">
                         <div class="export-icon">PC</div>
-                        <h3>PC.html</h3>
+                        <h3>PC下载.html</h3>
                         <p>仅包含PC平台的游戏资源</p>
-                        <button class="btn btn-primary" onclick="doExport()">生成并下载</button>
+                        <button class="btn btn-primary" onclick="doExport('pc')">下载 PC下载.html</button>
                     </div>
                     <div class="export-card">
                         <div class="export-icon">PC+安卓</div>
-                        <h3>PC+安卓.html</h3>
+                        <h3>PC+安卓下载.html</h3>
                         <p>包含PC和安卓双平台的游戏资源</p>
-                        <button class="btn btn-primary" onclick="doExport()">生成并下载</button>
+                        <button class="btn btn-primary" onclick="doExport('mixed')">下载 PC+安卓下载.html</button>
                     </div>
-                </div>
-                <div class="export-info" id="exportInfo" style="display:none">
-                    <p>导出完成！</p>
-                    <p>PC文件: <code id="exportPcFile"></code></p>
-                    <p>PC+安卓文件: <code id="exportMixedFile"></code></p>
                 </div>
             </div>
         </section>
