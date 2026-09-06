@@ -45,18 +45,18 @@ engine.progress_callback = progress_callback
 def index():
     return render_template("index.html")
 
-@app.route("/images/<path:source>/<path:filename>")
-def serve_image(source, filename):
-    """提供本地下载的图片（兼容hash目录和旧中文目录）"""
-    img_path = IMAGES_DIR / source / filename
+@app.route("/images/<path:subpath>")
+def serve_image(subpath):
+    """提供本地下载的图片：/images/{post_id}/{filename}"""
+    import re as _re
+    # 安全校验：只允许数字目录名和合法文件名
+    if ".." in subpath or not _re.fullmatch(r"[A-Za-z0-9_\-]+/[A-Za-z0-9_\-]+\.\w+", subpath):
+        return "", 400
+    img_path = IMAGES_DIR / subpath
     if img_path.exists():
-        return send_file(str(img_path))
-    # 兼容旧路径：遍历images下所有子目录查找
-    for d in IMAGES_DIR.iterdir():
-        if d.is_dir():
-            candidate = d / filename
-            if candidate.exists():
-                return send_file(str(candidate))
+        resp = send_file(str(img_path))
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
     return "", 404
 
 @app.route("/api/proxy_image")

@@ -1,5 +1,6 @@
 """数据库模块"""
 import sqlite3
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from contextlib import contextmanager
 
@@ -65,14 +66,16 @@ def get_conn():
         conn.close()
 
 def insert_post(post_data):
+    # 使用本地时间（UTC+8）
+    local_now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as conn:
         conn.execute("""
             INSERT OR REPLACE INTO posts
             (source, source_id, source_url, title, platform, content,
              likes, comments, views, unzip_code, cheat_code,
              baidu_link, baidu_code, mobile_link, mobile_code,
-             images, original_images, post_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             images, original_images, post_date, crawled_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             post_data.get("source"),
             post_data.get("source_id"),
@@ -92,6 +95,7 @@ def insert_post(post_data):
             post_data.get("images"),
             post_data.get("original_images"),
             post_data.get("post_date"),
+            local_now,
         ))
 
 def get_posts(platform=None, source=None, limit=100, offset=0):

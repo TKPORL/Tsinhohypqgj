@@ -82,13 +82,17 @@ def generate_html(posts, title, filename):
 
     cards_html = ""
     for post in posts:
-        # 图片
+        # 图片 - 本地路径加/前缀，远程URL原样
         images = []
         try:
             images = json.loads(post.get("images", "[]"))
         except:
             pass
-        image = images[0] if images else ""
+        raw_img = images[0] if images else ""
+        if raw_img and raw_img.startswith("images/"):
+            image = "/" + raw_img
+        else:
+            image = raw_img
 
         # 平台标签
         platform = post.get("platform", "unknown")

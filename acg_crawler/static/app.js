@@ -231,7 +231,15 @@ document.addEventListener("DOMContentLoaded", function() {
         var images = [];
         try { images = JSON.parse(post.images || "[]"); } catch(e) {}
         var rawImage = images[0] || "";
-        var image = rawImage ? (rawImage.indexOf("/images/") === 0 ? rawImage : "/api/proxy_image?url=" + encodeURIComponent(rawImage)) : "";
+        // 本地路径加/前缀，远程URL走代理
+        var image = "";
+        if (rawImage) {
+            if (rawImage.indexOf("images/") === 0) {
+                image = "/" + rawImage;
+            } else if (rawImage.indexOf("http") === 0) {
+                image = "/api/proxy_image?url=" + encodeURIComponent(rawImage);
+            }
+        }
 
         var platformTags = {
             pc: '<span class="tag tag-pc">PC</span>',

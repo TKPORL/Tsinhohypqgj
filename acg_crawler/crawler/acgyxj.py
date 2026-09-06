@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from crawler.base import BaseCrawler
 from parser import extract_links, extract_cloud_name, extract_cheat_code
-from parser.image_handler import download_images, get_web_path
+from parser.image_handler import download_images
 
 class ACGYXJCrawler(BaseCrawler):
     """ACG游戏姬爬虫"""
@@ -123,13 +123,13 @@ class ACGYXJCrawler(BaseCrawler):
         # 提取source_id
         source_id = url.split("/")[-1].replace(".html", "")
 
-        # 下载图片到本地
+        # 下载图片到本地（用source_id作为临时目录名）
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
-        local_images = download_images(images[:3], self.site_name, proxy=proxy)
+        local_images = download_images(images[:3], source_id, proxy=proxy)
         if local_images:
-            images = [get_web_path(p, self.site_name) for p in local_images]
+            images = local_images
 
         return {
             "source": self.site_name,
