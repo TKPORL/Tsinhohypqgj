@@ -19,14 +19,13 @@ CODE_PATTERNS = [
 ]
 
 CLOUD_NAME_PATTERNS = [
-    re.compile(r'(?:百度网盘|移动云盘|百度云|移动云)\s*[:：]\s*([A-Za-z0-9]+)', re.IGNORECASE),
-    re.compile(r'文件[名码称]\s*[:：]?\s*([A-Za-z0-9]{4,})', re.IGNORECASE),
-    re.compile(r'(?:链接|下载)\s*[:：]\s*\S+\s+(?:文件名|名称)\s*[:：]?\s*([A-Za-z0-9]{4,})', re.IGNORECASE),
     # 匹配 "分享文件：XXXX" 和 "通过网盘分享的文件：XXXX" 格式
     re.compile(r'分享文件[：:]\s*([A-Za-z0-9]+)', re.IGNORECASE),
     re.compile(r'通过(?:百度|移动|阿里)?网盘分享的文件[：:]\s*([A-Za-z0-9]+)', re.IGNORECASE),
-    # 匹配 "百度：...分享的文件：A1326" 格式
     re.compile(r'分享的文件[：:]\s*([A-Za-z0-9]+)', re.IGNORECASE),
+    # 百度网盘：XXXX（排除URL，只匹配纯文件名）
+    re.compile(r'(?:百度网盘|移动云盘|百度云|移动云)\s*[:：]\s*(?!https?://)([A-Za-z0-9]{4,})', re.IGNORECASE),
+    re.compile(r'文件[名码称]\s*[:：]?\s*(?!https?://)([A-Za-z0-9]{4,})', re.IGNORECASE),
 ]
 
 CHEAT_CODE_PATTERN = re.compile(

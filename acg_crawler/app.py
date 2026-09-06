@@ -121,18 +121,34 @@ def api_posts_grouped():
             likes DESC"""
         rows = conn.execute(query, params).fetchall()
 
+        # 按平台+时间分组
         groups = {}
         for row in rows:
             d = dict(row)
-            crawl_date = d.get("crawl_date") or "未知日期"
-            if crawl_date not in groups:
-                groups[crawl_date] = {"date": crawl_date, "posts": [], "total": 0}
-            groups[crawl_date]["posts"].append(d)
-            groups[crawl_date]["total"] += 1
+            crawl_date = d.get("crawl_date") or "未知时间"
+            platform = d.get("platform", "unknown")
+            plat_label = {"pc": "PC", "android": "安卓", "pc_android": "PC+安卓"}.get(platform, "其他")
+            group_key = f"{plat_label} {crawl_date}"
+            if group_key not in groups:
+                groups[group_key] = {"label": group_key, "platform": plat_label, "date": crawl_date, "posts": [], "total": 0}
+            groups[group_key]["posts"].append(d)
+            groups[group_key]["total"] += 1
 
-        # 按日期倒序排列
-        sorted_groups = sorted(groups.values(), key=lambda g: g["date"], reverse=True)
-        return jsonify({"groups": sorted_groups})
+        # 排序：双盘优先，然后按平台分组（PC→PC+安卓→安卓），最后按时间倒序
+        plat_order = {"PC": 0, "PC+安卓": 1, "安卓": 2, "其他": 3}
+        sorted_groups = sorted(groups.values(), key=lambda g: (plat_order.get(g["platform"], 9), g["date"]), reverse=False)
+        # 同平台内按时间倒序
+        final = []
+        by_plat = {}
+        for g in sorted_groups:
+            p = g["platform"]
+            if p not in by_plat:
+                by_plat[p] = []
+            by_plat[p].append(g)
+        for plat in ["PC", "PC+安卓", "安卓", "其他"]:
+            if plat in by_plat:
+                final.extend(sorted(by_plat[plat], key=lambda g: g["date"], reverse=True))
+        return jsonify({"groups": final})
 
 @app.route("/api/start_crawl", methods=["POST"])
 def api_start_crawl():

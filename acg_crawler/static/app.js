@@ -110,14 +110,18 @@ document.addEventListener("DOMContentLoaded", function() {
                     document.getElementById("statError").textContent = data.error;
 
                     if (data.recent_logs) {
+                        // 只在用户已经在底部时才自动滚动
+                        var wasAtBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 50;
                         logBox.innerHTML = "";
-                        data.recent_logs.forEach(log => {
-                            const line = document.createElement("div");
+                        data.recent_logs.forEach(function(log) {
+                            var line = document.createElement("div");
                             line.className = "log-line" + (log.level === "error" ? " error" : "");
                             line.textContent = log.text;
                             logBox.appendChild(line);
                         });
-                        logBox.scrollTop = logBox.scrollHeight;
+                        if (wasAtBottom) {
+                            logBox.scrollTop = logBox.scrollHeight;
+                        }
                     }
 
                     if (!data.running) {
@@ -176,7 +180,7 @@ document.addEventListener("DOMContentLoaded", function() {
             // 吸顶按钮
             const btn = document.createElement("button");
             btn.className = "sticky-date-btn";
-            btn.textContent = group.date + " (" + group.total + ")";
+            btn.textContent = group.label + " (" + group.total + ")";
             btn.dataset.group = idx;
             btn.addEventListener("click", function() {
                 const targetGroup = document.getElementById("group-" + idx);
@@ -198,7 +202,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const headerEl = document.createElement("div");
             headerEl.className = "date-group-header";
-            headerEl.innerHTML = '<span class="date-label">' + group.date + '</span><span class="date-count">' + group.total + ' 条</span><button class="btn btn-sm toggle-btn" onclick="toggleGroup(' + idx + ')">展开</button>';
+            headerEl.innerHTML = '<span class="date-label">' + group.label + '</span><span class="date-count">' + group.total + ' 条</span><button class="btn btn-sm toggle-btn" onclick="toggleGroup(' + idx + ')">展开</button>';
             groupEl.appendChild(headerEl);
 
             const gridEl = document.createElement("div");

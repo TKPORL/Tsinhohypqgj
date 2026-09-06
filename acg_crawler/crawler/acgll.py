@@ -1,4 +1,5 @@
 """ACG图书馆爬虫"""
+import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
@@ -153,8 +154,8 @@ class ACGLLCrawler(BaseCrawler):
             "baidu_code": links.get("baidu_code"),
             "mobile_link": links.get("mobile_link"),
             "mobile_code": links.get("mobile_code"),
-            "images": str(images),
-            "original_images": str(images),
+            "images": json.dumps(images),
+            "original_images": json.dumps(images),
             "post_date": post_date,
         }
 

@@ -1,4 +1,5 @@
 """ACG游戏姬爬虫"""
+import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
@@ -33,12 +34,64 @@ class ACGYXJCrawler(BaseCrawler):
                 results.append({"url": link, "category": category})
         return results
 
-    def parse_detail(self, url, category=""):
+    def _format_title(self, title, category=""):
+        """格式化标题：[新作/类型/标签] 游戏名 [PC 大小] [C码]"""
+        import re as _re
+        if not title:
+            return title
+
+        # 提取前缀（新作/更新/等）
+        prefix = ""
+        m = _re.match(r'^(新作|更新|汉化|原创)\s*', title)
+        if m:
+            prefix = m.group(1)
+            title = title[m.end():]
+
+        # 提取第一个 [] 里的分类标签
+        tags = ""
+        m = _re.match(r'[\[【]([^]】]+)[\]】]', title)
+        if m:
+            tags = m.group(1).replace("/", "/")
+            title = title[m.end():].strip()
+
+        # 提取下载码 [C157555] 或 [PCC155555]
+        code = ""
+        m = _re.search(r'\s*[\[【]([CPcp]?\d{5,})[\]】]\s*$', title)
+        if m:
+            code = m.group(1)
+            title = title[:m.start()].strip()
+
+        # 提取大小 [1.10G] [3.75GB] [840M]
+        size = ""
+        m = _re.search(r'\s*[\[【](\d+\.?\d*\s*[GMgm][Bb]?)\s*[\]】]', title)
+        if m:
+            size = m.group(1)
+            title = title[:m.start()].strip()
+
+        # 构建新标题
+        parts = []
+        if prefix or tags:
+            tag_str = "/".join(filter(None, [prefix, tags]))
+            parts.append(f"[{tag_str}]")
+        parts.append(title)
+        if size:
+            plat = "PC" if (category or "").upper() == "PC" else ""
+            if not plat and "安卓" not in title:
+                plat = "PC"
+            parts.append(f"[{plat} {size}]".strip() if plat else f"[{size}]")
+        if code:
+            parts.append(f"[{code}]")
+
+        result = " ".join(parts)
+        return result if result.strip() else title
         soup = self._soup(url)
 
         # 标题 - ACG游戏姬使用 h1（无特定class）
         title_el = soup.select_one("h1")
         title = title_el.get_text(strip=True) if title_el else ""
+
+        # 标题格式化：提取各部分重新组合
+        title = self._format_title(title, category)
 
         # 内容 - ACG游戏姬使用 div.single-content
         content_el = soup.select_one("div.single-content")
@@ -147,8 +200,8 @@ class ACGYXJCrawler(BaseCrawler):
             "baidu_code": links.get("baidu_code"),
             "mobile_link": links.get("mobile_link"),
             "mobile_code": links.get("mobile_code"),
-            "images": str(images),
-            "original_images": str(images),
+            "images": json.dumps(images),
+            "original_images": json.dumps(images),
             "post_date": post_date,
         }
 
