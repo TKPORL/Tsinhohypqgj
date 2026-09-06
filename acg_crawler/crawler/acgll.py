@@ -1,7 +1,7 @@
 """ACG图书馆爬虫"""
 import re
 from crawler.base import BaseCrawler
-from parser import extract_links
+from parser import extract_links, extract_cloud_name, extract_cheat_code
 
 class ACGLLCrawler(BaseCrawler):
     """ACG图书馆爬虫"""
@@ -14,7 +14,7 @@ class ACGLLCrawler(BaseCrawler):
     def get_list_page(self, page_num):
         url = f"{self.base_url}/category/youxi/page/{page_num}"
         soup = self._soup(url)
-        links = []
+        results = []
         # ACG图书馆使用Zibll 8.8主题，帖子在 posts.posts-item 元素中
         for item in soup.select("posts.posts-item"):
             a = item.select_one("h2.item-heading > a")
@@ -22,10 +22,23 @@ class ACGLLCrawler(BaseCrawler):
                 link = a["href"]
                 if not link.startswith("http"):
                     link = self.base_url + link
-                links.append(link)
-        return links
 
-    def parse_detail(self, url):
+                # 从标签提取平台信息
+                category = ""
+                tag_els = item.select(".item-meta a, .item-tag a, a[rel='tag']")
+                for tag_el in tag_els:
+                    tag_text = tag_el.get_text(strip=True).lower()
+                    if tag_text in ("pc", "pc版", "windows"):
+                        category = "PC"
+                        break
+                    elif tag_text in ("安卓", "android", "az"):
+                        category = "AZ"
+                        break
+
+                results.append({"url": link, "category": category})
+        return results
+
+    def parse_detail(self, url, category=""):
         soup = self._soup(url)
 
         # 标题 - ACG图书馆使用 h1.article-title
@@ -84,17 +97,30 @@ class ACGLLCrawler(BaseCrawler):
             full_text = str(soup)
             links = extract_links(full_text)
 
+        # 提取下载名追加到标题
+        cloud_name = extract_cloud_name(content)
+        if cloud_name and cloud_name not in title:
+            title = f"{title} [{cloud_name}]"
+
+        # 提取作弊码
+        cheat_code = extract_cheat_code(title, content)
+
         # 提取解压码
         unzip_code = ""
-        cheat_code = ""
         code_match = re.search(r'(?:解压码|解压密码|密码)[：:\s]*(\S+)', content)
         if code_match:
             unzip_code = code_match.group(1)
 
-        # 判断平台
+        # 判断平台 - 优先从分类标签判断
         platform = "unknown"
+        category_lower = (category or "").lower()
         title_lower = title.lower()
-        if "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
+
+        if category_lower == "pc":
+            platform = "pc"
+        elif category_lower in ("az", "安卓", "android"):
+            platform = "android"
+        elif "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
             platform = "pc_android"
         elif "安卓" in title_lower:
             platform = "android"

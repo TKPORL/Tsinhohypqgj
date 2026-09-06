@@ -18,6 +18,16 @@ CODE_PATTERNS = [
     r'[?&]pwd=([A-Za-z0-9]{4})',
 ]
 
+CLOUD_NAME_PATTERN = re.compile(
+    r'(?:百度网盘|移动云盘|百度云|移动云)\s*[:：]\s*([A-Za-z0-9]+)',
+    re.IGNORECASE,
+)
+
+CHEAT_CODE_PATTERN = re.compile(
+    r'作弊码[：:\s]*(\S+)',
+    re.IGNORECASE,
+)
+
 def extract_links(text):
     """从文本中提取百度网盘和移动云盘链接"""
     if not text:
@@ -82,3 +92,25 @@ def has_valid_link(text):
     """检查文本是否包含有效的百度或移动云盘链接"""
     links = extract_links(text)
     return bool(links.get("baidu_link") or links.get("mobile_link"))
+
+
+def extract_cloud_name(text):
+    """从内容中提取网盘文件名（如 C156222）"""
+    if not text:
+        return ""
+    match = CLOUD_NAME_PATTERN.search(text)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def extract_cheat_code(title, content):
+    """从内容中提取作弊码（标题含'作弊码'时才提取）"""
+    if not content:
+        return ""
+    if "作弊码" not in (title or ""):
+        return ""
+    match = CHEAT_CODE_PATTERN.search(content)
+    if match:
+        return match.group(1).strip()
+    return ""

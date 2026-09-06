@@ -71,16 +71,36 @@ class CrawlerEngine:
                         break
 
                     try:
-                        urls = crawler.get_list_page(page)
-                        self._log(crawler.site_name, f"第{page}页: 发现 {len(urls)} 个帖子")
+                        items = crawler.get_list_page(page)
+                        self._log(crawler.site_name, f"第{page}页: 发现 {len(items)} 个帖子")
 
-                        for url in urls:
+                        for item in items:
                             if self.cancelled:
                                 break
 
+                            # 兼容新格式(dict with url+category)和旧格式(纯url字符串)
+                            if isinstance(item, dict):
+                                url = item["url"]
+                                category = item.get("category", "")
+                            else:
+                                url = item
+                                category = ""
+
                             try:
-                                post = crawler.parse_detail(url)
+                                post = crawler.parse_detail(url, category=category) if category else crawler.parse_detail(url)
                                 if post:
+                                    # 过滤空标题
+                                    if not post.get("title", "").strip():
+                                        skipped += 1
+                                        self._log(crawler.site_name, f"✗ 跳过(空标题): {url}")
+                                        continue
+
+                                    # 过滤unknown平台
+                                    if post.get("platform") == "unknown":
+                                        skipped += 1
+                                        self._log(crawler.site_name, f"✗ 跳过(未知平台): {post['title'][:50]}...")
+                                        continue
+
                                     # 检查是否有有效链接
                                     has_baidu = bool(post.get("baidu_link"))
                                     has_mobile = bool(post.get("mobile_link"))
@@ -180,6 +200,16 @@ class CrawlerEngine:
                         break
 
                     try:
+                        # 过滤空标题
+                        if not post.get("title", "").strip():
+                            skipped += 1
+                            continue
+
+                        # 过滤unknown平台
+                        if post.get("platform") == "unknown":
+                            skipped += 1
+                            continue
+
                         has_baidu = bool(post.get("baidu_link"))
                         has_mobile = bool(post.get("mobile_link"))
 
@@ -267,16 +297,34 @@ class CrawlerEngine:
 
                 while page <= max_pages and not found_existing and not self.cancelled:
                     try:
-                        urls = crawler.get_list_page(page)
-                        self._log(crawler.site_name, f"第{page}页: 发现 {len(urls)} 个帖子")
+                        items = crawler.get_list_page(page)
+                        self._log(crawler.site_name, f"第{page}页: 发现 {len(items)} 个帖子")
 
-                        for url in urls:
+                        for item in items:
                             if self.cancelled:
                                 break
 
+                            # 兼容新格式(dict with url+category)和旧格式(纯url字符串)
+                            if isinstance(item, dict):
+                                url = item["url"]
+                                category = item.get("category", "")
+                            else:
+                                url = item
+                                category = ""
+
                             try:
-                                post = crawler.parse_detail(url)
+                                post = crawler.parse_detail(url, category=category) if category else crawler.parse_detail(url)
                                 if post:
+                                    # 过滤空标题
+                                    if not post.get("title", "").strip():
+                                        skipped += 1
+                                        continue
+
+                                    # 过滤unknown平台
+                                    if post.get("platform") == "unknown":
+                                        skipped += 1
+                                        continue
+
                                     has_baidu = bool(post.get("baidu_link"))
                                     has_mobile = bool(post.get("mobile_link"))
 

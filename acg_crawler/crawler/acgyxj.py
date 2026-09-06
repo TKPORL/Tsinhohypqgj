@@ -1,7 +1,7 @@
 """ACG游戏姬爬虫"""
 import re
 from crawler.base import BaseCrawler
-from parser import extract_links
+from parser import extract_links, extract_cloud_name, extract_cheat_code
 
 class ACGYXJCrawler(BaseCrawler):
     """ACG游戏姬爬虫"""
@@ -14,17 +14,24 @@ class ACGYXJCrawler(BaseCrawler):
     def get_list_page(self, page_num):
         url = f"{self.base_url}/page/{page_num}"
         soup = self._soup(url)
-        links = []
+        results = []
         for article in soup.select("article.post-list"):
             a = article.select_one("h3.post-title a")
             if a and a.get("href"):
                 link = a["href"]
                 if not link.startswith("http"):
                     link = self.base_url + link
-                links.append(link)
-        return links
 
-    def parse_detail(self, url):
+                # 从分类标签提取平台信息
+                category = ""
+                cat_el = article.select_one("div.category div.tags a")
+                if cat_el:
+                    category = cat_el.get_text(strip=True)
+
+                results.append({"url": link, "category": category})
+        return results
+
+    def parse_detail(self, url, category=""):
         soup = self._soup(url)
 
         title_el = soup.select_one("h1.entry-title, h1.post-title, .article-title h1")
@@ -82,14 +89,27 @@ class ACGYXJCrawler(BaseCrawler):
             full_text = str(soup)
             links = extract_links(full_text)
 
+        # 提取下载名追加到标题
+        cloud_name = extract_cloud_name(content)
+        if cloud_name and cloud_name not in title:
+            title = f"{title} [{cloud_name}]"
+
+        # 提取作弊码
+        cheat_code = extract_cheat_code(title, content)
+
         # 提取解压码
         unzip_code = ""
-        cheat_code = ""
 
-        # 判断平台
+        # 判断平台 - 优先从分类标签判断
         platform = "unknown"
+        category_lower = (category or "").lower()
         title_lower = title.lower()
-        if "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
+
+        if category_lower == "pc":
+            platform = "pc"
+        elif category_lower == "az":
+            platform = "android"
+        elif "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
             platform = "pc_android"
         elif "安卓" in title_lower:
             platform = "android"

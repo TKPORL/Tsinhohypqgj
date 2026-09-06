@@ -1,7 +1,7 @@
 """萌幻ACG爬虫"""
 import re
 from crawler.base import BaseCrawler
-from parser import extract_links
+from parser import extract_links, extract_cloud_name, extract_cheat_code
 
 class ACGRXCrawler(BaseCrawler):
     """萌幻ACG爬虫"""
@@ -81,7 +81,7 @@ class ACGRXCrawler(BaseCrawler):
                 links.append(link)
         return links
 
-    def parse_detail(self, url):
+    def parse_detail(self, url, category=""):
         soup = self._soup(url)
 
         # 标题
@@ -122,9 +122,16 @@ class ACGRXCrawler(BaseCrawler):
             full_text = str(soup)
             links = extract_links(full_text)
 
+        # 提取下载名追加到标题
+        cloud_name = extract_cloud_name(content)
+        if cloud_name and cloud_name not in title:
+            title = f"{title} [{cloud_name}]"
+
+        # 提取作弊码
+        cheat_code = extract_cheat_code(title, content)
+
         # 提取解压码
         unzip_code = ""
-        cheat_code = ""
         code_match = re.search(r'(?:解压码|解压密码|密码)[：:\s]*(\S+)', content)
         if code_match:
             unzip_code = code_match.group(1)

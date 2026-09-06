@@ -53,7 +53,7 @@ class BaseCrawler(ABC):
         pass
 
     @abstractmethod
-    def parse_detail(self, url):
+    def parse_detail(self, url, category=""):
         """解析详情页，返回帖子数据字典"""
         pass
 
