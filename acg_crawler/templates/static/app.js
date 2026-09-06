@@ -140,11 +140,15 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             linksHtml += '<a href="' + post.source_url + '" class="link-btn link-source" target="_blank">原帖</a>';
             let footerHtml = "";
-            if (post.unzip_code) {
-                footerHtml += '<span>解压码: <span class="copy-text" onclick="copyText(this)">' + post.unzip_code + '</span></span>';
-            }
-            if (post.cheat_code) {
-                footerHtml += '<span>作弊码: <span class="copy-text" onclick="copyText(this)">' + post.cheat_code + '</span></span>';
+            if (post.unzip_code || post.cheat_code) {
+                footerHtml += '<div class="footer-left">';
+                if (post.unzip_code) {
+                    footerHtml += '<span>解压码: <span class="copy-text" onclick="copyText(this)">' + post.unzip_code + '</span></span>';
+                }
+                if (post.cheat_code) {
+                    footerHtml += '<span>作弊码: <span class="copy-text" onclick="copyText(this)">' + post.cheat_code + '</span></span>';
+                }
+                footerHtml += '</div>';
             }
             card.innerHTML =
                 '<div class="card-header">' +
@@ -194,8 +198,12 @@ document.addEventListener("DOMContentLoaded", function() {
 function copyText(el) {
     const text = el.textContent;
     navigator.clipboard.writeText(text).then(function() {
-        const orig = el.style.background;
-        el.style.background = "rgba(102, 187, 106, 0.3)";
-        setTimeout(function() { el.style.background = orig; }, 500);
+        el.classList.add("copied");
+        const orig = el.textContent;
+        el.textContent = "已复制!";
+        setTimeout(function() {
+            el.classList.remove("copied");
+            el.textContent = orig;
+        }, 800);
     });
 }
