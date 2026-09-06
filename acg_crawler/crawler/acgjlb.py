@@ -20,6 +20,12 @@ class ACGJLBCrawler(BaseCrawler):
         results = []
         # ACG俱乐部使用Zibll主题，帖子在 posts.posts-item 元素中
         for item in soup.select("posts.posts-item"):
+            # 跳过置顶帖子（Zibll主题用 sticky/pinned 类或 .pin-badge 标记）
+            if item.get("class") and any(c in ("sticky", "pinned") for c in item.get("class", [])):
+                continue
+            if item.select_one(".pin-badge, .sticky-label, .post-pin"):
+                continue
+
             a = item.select_one("h2.item-heading > a")
             if a and a.get("href"):
                 link = a["href"]

@@ -1,9 +1,31 @@
 """HTML生成器"""
+import base64
 import json
 from datetime import datetime
 from pathlib import Path
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
+IMAGES_DIR = Path(__file__).parent.parent / "images"
+
+MIME_MAP = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".png": "image/png", ".gif": "image/gif",
+    ".webp": "image/webp", ".bmp": "image/bmp",
+}
+
+def _img_to_data_uri(img_path):
+    """本地图片转base64 data URI，远程URL原样返回"""
+    if not img_path or img_path.startswith("http"):
+        return img_path
+    # 处理 images/xxx/file.jpg 路径
+    full = IMAGES_DIR.parent / img_path
+    if not full.exists():
+        return img_path
+    ext = full.suffix.lower()
+    mime = MIME_MAP.get(ext, "image/jpeg")
+    data = full.read_bytes()
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{b64}"
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN">
@@ -82,17 +104,14 @@ def generate_html(posts, title, filename):
 
     cards_html = ""
     for post in posts:
-        # 图片 - 本地路径加/前缀，远程URL原样
+        # 图片 - 本地路径转base64，远程URL原样
         images = []
         try:
             images = json.loads(post.get("images", "[]"))
         except:
             pass
         raw_img = images[0] if images else ""
-        if raw_img and raw_img.startswith("images/"):
-            image = "/" + raw_img
-        else:
-            image = raw_img
+        image = _img_to_data_uri(raw_img)
 
         # 平台标签
         platform = post.get("platform", "unknown")
