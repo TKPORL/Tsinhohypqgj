@@ -126,6 +126,14 @@ document.addEventListener("DOMContentLoaded", function() {
                         stopBtn.classList.add("hidden");
                         statusDot.classList.remove("running");
                         statusText.textContent = "完成";
+                        // 爬取完成自动跳转到结果页
+                        setTimeout(function() {
+                            document.querySelectorAll(".nav-btn").forEach(function(b) { b.classList.remove("active"); });
+                            document.querySelectorAll(".panel").forEach(function(p) { p.classList.remove("active"); });
+                            document.querySelector('[data-panel="result"]').classList.add("active");
+                            document.getElementById("panel-result").classList.add("active");
+                            loadPosts();
+                        }, 500);
                     }
                 });
         }, 1000);

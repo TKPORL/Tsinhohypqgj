@@ -97,7 +97,7 @@ def api_posts_grouped():
     platform = request.args.get("platform", "all")
     source = request.args.get("source", "all")
     with get_conn() as conn:
-        query = "SELECT *, DATE(crawled_at) as crawl_date FROM posts WHERE 1=1"
+        query = "SELECT *, strftime('%Y-%m-%d %H:%M', crawled_at) as crawl_date FROM posts WHERE 1=1"
         params = []
         if platform and platform != "all":
             if platform == "pc":
