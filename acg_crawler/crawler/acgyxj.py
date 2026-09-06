@@ -36,18 +36,20 @@ class ACGYXJCrawler(BaseCrawler):
     def parse_detail(self, url, category=""):
         soup = self._soup(url)
 
-        title_el = soup.select_one("h1.entry-title, h1.post-title, .article-title h1")
+        # 标题 - ACG游戏姬使用 h1（无特定class）
+        title_el = soup.select_one("h1")
         title = title_el.get_text(strip=True) if title_el else ""
 
-        content_el = soup.select_one(".entry-content, .post-content, .article-content")
-        content = content_el.get_text(strip=True) if content_el else ""
+        # 内容 - ACG游戏姬使用 div.single-content
+        content_el = soup.select_one("div.single-content")
+        content = content_el.get_text(separator="\n", strip=True) if content_el else ""
 
-        # 提取图片
+        # 提取图片 - 排除头像和emoji
         images = []
         if content_el:
             for img in content_el.select("img"):
                 src = img.get("data-src") or img.get("src") or ""
-                if src and "loading" not in src and "avatar" not in src and "emoji" not in src:
+                if src and "loading" not in src and "avatar" not in src and "emoji" not in src and "cravatar" not in src:
                     if not src.startswith("http"):
                         src = self.base_url + src
                     images.append(src)

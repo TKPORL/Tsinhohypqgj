@@ -31,7 +31,7 @@ def get_image_filename(url, source):
     return f"{url_hash}{ext}"
 
 def download_image(url, source, proxy=None, timeout=30):
-    """下载单张图片，返回本地路径"""
+    """下载单张图片，成功返回本地路径，失败返回原始URL"""
     try:
         img_dir = get_image_dir(source)
         filename = get_image_filename(url, source)
@@ -49,12 +49,12 @@ def download_image(url, source, proxy=None, timeout=30):
         if proxy:
             proxies = {"http": proxy, "https": proxy}
 
-        resp = requests.get(url, headers=headers, proxies=proxies, timeout=timeout, stream=True)
+        resp = requests.get(url, headers=headers, proxies=proxies, timeout=timeout, stream=True, verify=False)
         resp.raise_for_status()
 
         content_type = resp.headers.get("Content-Type", "")
         if "image" not in content_type and len(resp.content) < 1000:
-            return None
+            return url
 
         with open(local_path, "wb") as f:
             for chunk in resp.iter_content(8192):
@@ -63,7 +63,8 @@ def download_image(url, source, proxy=None, timeout=30):
         return str(local_path)
 
     except Exception as e:
-        return None
+        # 下载失败时返回原始URL，前端通过代理加载
+        return url
 
 def download_images(urls, source, proxy=None, max_workers=4):
     """批量下载图片，返回本地路径列表"""
@@ -82,8 +83,12 @@ def download_images(urls, source, proxy=None, max_workers=4):
                 pass
     return results
 
-def get_web_path(local_path, source):
-    """将本地路径转为Flask可服务的web路径：/images/<hash>/<filename>"""
+def get_web_path(local_path_or_url, source):
+    """将本地路径或URL转为前端可用的路径"""
     from pathlib import Path as _P
-    filename = _P(local_path).name
+    # 如果是URL，直接返回（前端通过代理加载）
+    if local_path_or_url.startswith("http"):
+        return local_path_or_url
+    # 如果是本地路径，转为Flask可服务的web路径
+    filename = _P(local_path_or_url).name
     return f"/images/{_source_hash(source)}/{filename}"

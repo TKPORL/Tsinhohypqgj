@@ -74,7 +74,7 @@ def api_proxy_image():
         if config.get("proxy", {}).get("enabled"):
             proxy = config["proxy"]["http"]
         proxies = {"http": proxy, "https": proxy} if proxy else None
-        resp = req_lib.get(url, headers=headers, proxies=proxies, timeout=15, stream=True)
+        resp = req_lib.get(url, headers=headers, proxies=proxies, timeout=15, stream=True, verify=False)
         resp.raise_for_status()
         content_type = resp.headers.get("Content-Type", "image/jpeg")
         return Response(resp.iter_content(8192), content_type=content_type)
