@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             if (this.dataset.panel === "result") loadPosts();
             if (this.dataset.panel === "history") loadHistory();
+            if (this.dataset.panel === "export") loadExportInfo();
         });
     });
 
@@ -18,14 +19,18 @@ document.addEventListener("DOMContentLoaded", function() {
     const modeRadios = document.querySelectorAll('input[name="crawlMode"]');
     const dateGroup = document.getElementById("dateGroup");
     const pageGroup = document.getElementById("pageGroup");
+    const incrementalGroup = document.getElementById("incrementalGroup");
     modeRadios.forEach(radio => {
         radio.addEventListener("change", function() {
+            dateGroup.classList.add("hidden");
+            pageGroup.classList.add("hidden");
+            incrementalGroup.classList.add("hidden");
             if (this.value === "by_date") {
                 dateGroup.classList.remove("hidden");
-                pageGroup.classList.add("hidden");
-            } else {
-                dateGroup.classList.add("hidden");
+            } else if (this.value === "by_page") {
                 pageGroup.classList.remove("hidden");
+            } else if (this.value === "incremental") {
+                incrementalGroup.classList.remove("hidden");
             }
         });
     });
@@ -183,6 +188,10 @@ document.addEventListener("DOMContentLoaded", function() {
             };
             const platformTag = platformTags[post.platform] || platformTags.unknown;
 
+            // 双网盘标识
+            const hasDual = post.baidu_link && post.mobile_link;
+            const dualTag = hasDual ? '<span class="tag tag-dual">双网盘</span>' : '';
+
             let linksHtml = "";
             if (post.baidu_link) {
                 linksHtml += `<a href="${post.baidu_link}" class="link-btn link-baidu" target="_blank">百度网盘${post.baidu_code ? ' ('+post.baidu_code+')' : ''}</a>`;
@@ -202,7 +211,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             card.innerHTML = `
                 <div class="card-header">
-                    <div class="card-tags">${platformTag}<span class="tag tag-source">${post.source}</span></div>
+                    <div class="card-tags">${platformTag}${dualTag}<span class="tag tag-source">${post.source}</span></div>
                     <span class="tag tag-date">${post.post_date || ''}</span>
                 </div>
                 <div class="card-images">
@@ -218,6 +227,9 @@ document.addEventListener("DOMContentLoaded", function() {
                     <div class="card-links">${linksHtml}</div>
                 </div>
                 ${footerHtml}
+                <div class="card-actions">
+                    <button class="btn btn-sm btn-danger" onclick="deletePost(${post.id})">删除</button>
+                </div>
             `;
             grid.appendChild(card);
         });
@@ -228,6 +240,16 @@ document.addEventListener("DOMContentLoaded", function() {
         if (n >= 1000) return (n / 1000).toFixed(1) + "k";
         return n;
     }
+
+    // 删除帖子
+    window.deletePost = function(id) {
+        if (!confirm("确定删除这条记录？")) return;
+        fetch("/api/delete_post", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({id: id})
+        }).then(() => loadPosts());
+    };
 
     // 加载历史
     function loadHistory() {
@@ -253,20 +275,52 @@ document.addEventListener("DOMContentLoaded", function() {
                         <td>${task.skipped_posts}</td>
                         <td>${task.error_posts}</td>
                         <td>${task.created_at || ''}</td>
+                        <td>
+                            <button class="btn btn-sm" onclick="downloadHtml()">下载HTML</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteTask(${task.id})">删除</button>
+                        </td>
                     `;
                     tbody.appendChild(tr);
                 });
             });
     }
 
-    // 导出
+    window.deleteTask = function(id) {
+        if (!confirm("确定删除这条历史记录？")) return;
+        fetch("/api/delete_task", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({id: id})
+        }).then(() => loadHistory());
+    };
+
+    window.downloadHtml = function() {
+        fetch("/api/export", {method: "POST"})
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    alert("导出完成！文件已保存到 output 目录。\n" + data.files.pc + "\n" + data.files.mixed);
+                }
+            });
+    };
+
+    // 导出页面
+    function loadExportInfo() {
+        fetch("/api/posts?limit=1")
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById("exportTotal").textContent = data.total;
+            });
+    }
+
     window.doExport = function() {
         fetch("/api/export", {method: "POST"})
             .then(r => r.json())
             .then(data => {
                 if (data.status === "ok") {
                     document.getElementById("exportInfo").style.display = "block";
-                    alert("导出完成！文件已保存到 output 目录。");
+                    document.getElementById("exportPcFile").textContent = data.files.pc;
+                    document.getElementById("exportMixedFile").textContent = data.files.mixed;
                 }
             });
     };

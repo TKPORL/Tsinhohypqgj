@@ -47,6 +47,7 @@
                     <div class="radio-group">
                         <label class="radio-label"><input type="radio" name="crawlMode" value="by_page" checked> 按页码爬取</label>
                         <label class="radio-label"><input type="radio" name="crawlMode" value="by_date"> 按日期爬取</label>
+                        <label class="radio-label"><input type="radio" name="crawlMode" value="incremental"> 增量爬取</label>
                     </div>
                 </div>
 
@@ -73,6 +74,10 @@
                         <span>至</span>
                         <input type="date" id="endDate" value="2026-09-06">
                     </div>
+                </div>
+
+                <div class="form-group hidden" id="incrementalGroup">
+                    <p class="help-text">增量模式：自动从上次爬取的位置继续，爬到已有数据时自动停止</p>
                 </div>
 
                 <div class="form-actions">
@@ -118,6 +123,7 @@
                             <option value="android">仅安卓</option>
                         </select>
                         <span class="result-count">共 <strong id="resultCount">0</strong> 条</span>
+                        <button class="btn btn-sm" onclick="downloadHtml()">下载HTML</button>
                     </div>
                 </div>
                 <div class="card-grid" id="cardGrid"></div>
@@ -142,6 +148,7 @@
                             <th>跳过</th>
                             <th>失败</th>
                             <th>时间</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody id="historyBody"></tbody>
@@ -152,6 +159,9 @@
             <div class="panel" id="panel-export">
                 <div class="panel-header">
                     <h2>导出文件</h2>
+                </div>
+                <div class="export-stats">
+                    <p>当前数据库共有 <strong id="exportTotal">0</strong> 条记录</p>
                 </div>
                 <div class="export-cards">
                     <div class="export-card">
@@ -168,7 +178,9 @@
                     </div>
                 </div>
                 <div class="export-info" id="exportInfo" style="display:none">
-                    <p>导出完成！文件已保存到 output 目录。</p>
+                    <p>导出完成！</p>
+                    <p>PC文件: <code id="exportPcFile"></code></p>
+                    <p>PC+安卓文件: <code id="exportMixedFile"></code></p>
                 </div>
             </div>
         </section>

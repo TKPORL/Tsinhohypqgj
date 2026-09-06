@@ -99,12 +99,19 @@ def get_posts(platform=None, source=None, limit=100, offset=0):
         query = "SELECT * FROM posts WHERE 1=1"
         params = []
         if platform and platform != "all":
-            query += " AND platform = ?"
-            params.append(platform)
+            if platform == "pc":
+                query += " AND (platform = 'pc' OR platform = 'unknown')"
+            elif platform == "pc_android":
+                query += " AND platform = 'pc_android'"
+            elif platform == "android":
+                query += " AND platform = 'android'"
+            else:
+                query += " AND platform = ?"
+                params.append(platform)
         if source and source != "all":
             query += " AND source = ?"
             params.append(source)
-        query += " ORDER BY (likes + comments) DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 1 ELSE 0 END) DESC, (likes + comments) DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         return [dict(row) for row in conn.execute(query, params).fetchall()]
 
@@ -113,8 +120,15 @@ def get_post_count(platform=None, source=None):
         query = "SELECT COUNT(*) FROM posts WHERE 1=1"
         params = []
         if platform and platform != "all":
-            query += " AND platform = ?"
-            params.append(platform)
+            if platform == "pc":
+                query += " AND (platform = 'pc' OR platform = 'unknown')"
+            elif platform == "pc_android":
+                query += " AND platform = 'pc_android'"
+            elif platform == "android":
+                query += " AND platform = 'android'"
+            else:
+                query += " AND platform = ?"
+                params.append(platform)
         if source and source != "all":
             query += " AND source = ?"
             params.append(source)
@@ -123,6 +137,10 @@ def get_post_count(platform=None, source=None):
 def delete_post(post_id):
     with get_conn() as conn:
         conn.execute("DELETE FROM posts WHERE id = ?", (post_id,))
+
+def delete_task(task_id):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
 
 def create_task(task_type, params, sites):
     with get_conn() as conn:

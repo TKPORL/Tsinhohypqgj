@@ -4,7 +4,7 @@ import threading
 from flask import Flask, render_template, request, jsonify
 
 from config import load_config
-from database import init_db, get_posts, get_post_count, delete_post, get_tasks
+from database import init_db, get_posts, get_post_count, delete_post, get_tasks, delete_task
 from crawler import CrawlerEngine
 from generator import export_posts
 
@@ -71,6 +71,8 @@ def api_start_crawl():
             start_date = data.get("start_date", "")
             end_date = data.get("end_date", "")
             engine.crawl_by_date(sites, start_date, end_date)
+        elif mode == "incremental":
+            engine.crawl_incremental(sites)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
@@ -100,6 +102,14 @@ def api_delete_post():
     post_id = data.get("id")
     if post_id:
         delete_post(post_id)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/delete_task", methods=["POST"])
+def api_delete_task():
+    data = request.json
+    task_id = data.get("id")
+    if task_id:
+        delete_task(task_id)
     return jsonify({"status": "ok"})
 
 @app.route("/api/export", methods=["POST"])

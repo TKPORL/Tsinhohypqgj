@@ -88,10 +88,10 @@ class CrawlerEngine:
                                     if has_baidu or has_mobile:
                                         insert_post(post)
                                         success += 1
-                                        self._log(crawler.site_name, f"✓ {post['title'][:30]}...")
+                                        self._log(crawler.site_name, f"✓ {post['title'][:50]}...")
                                     else:
                                         skipped += 1
-                                        self._log(crawler.site_name, f"✗ 跳过(无网盘链接): {post['title'][:30]}...")
+                                        self._log(crawler.site_name, f"✗ 跳过(无网盘链接): {post['title'][:50]}...")
                                 else:
                                     error += 1
                             except Exception as e:
@@ -232,3 +232,116 @@ class CrawlerEngine:
 
     def cancel(self):
         self.cancelled = True
+
+    def crawl_incremental(self, sites):
+        """增量爬取：从第1页开始，直到遇到已有数据为止"""
+        self.running = True
+        self.cancelled = False
+
+        params = json.dumps({"mode": "incremental"})
+        sites_str = ",".join(sites)
+        self.task_id = create_task("incremental", params, sites_str)
+        update_task(self.task_id, status="running", started_at=datetime.now().isoformat())
+
+        current = 0
+        success = 0
+        skipped = 0
+        error = 0
+
+        def crawl_site(site_key):
+            nonlocal current, success, skipped, error
+            if self.cancelled:
+                return
+
+            try:
+                crawler_cls = CRAWLERS.get(site_key)
+                if not crawler_cls:
+                    return
+
+                crawler = crawler_cls(self.config)
+                self._log(crawler.site_name, "开始增量爬取")
+
+                page = 1
+                max_pages = crawler.get_total_pages()
+                found_existing = False
+
+                while page <= max_pages and not found_existing and not self.cancelled:
+                    try:
+                        urls = crawler.get_list_page(page)
+                        self._log(crawler.site_name, f"第{page}页: 发现 {len(urls)} 个帖子")
+
+                        for url in urls:
+                            if self.cancelled:
+                                break
+
+                            try:
+                                post = crawler.parse_detail(url)
+                                if post:
+                                    has_baidu = bool(post.get("baidu_link"))
+                                    has_mobile = bool(post.get("mobile_link"))
+
+                                    if has_baidu or has_mobile:
+                                        # 检查是否已存在
+                                        from database import get_conn
+                                        with get_conn() as conn:
+                                            exists = conn.execute(
+                                                "SELECT id FROM posts WHERE source = ? AND source_id = ?",
+                                                (post["source"], post["source_id"])
+                                            ).fetchone()
+
+                                        if exists:
+                                            self._log(crawler.site_name, f"遇到已有数据，增量爬取完成")
+                                            found_existing = True
+                                            break
+
+                                        insert_post(post)
+                                        success += 1
+                                        self._log(crawler.site_name, f"✓ {post['title'][:50]}...")
+                                    else:
+                                        skipped += 1
+                            except Exception as e:
+                                error += 1
+                                self._log(crawler.site_name, f"解析失败: {e}", "error")
+
+                            with self._lock:
+                                current += 1
+                                self._update_progress(current, 0, success, skipped, error)
+
+                        page += 1
+                    except Exception as e:
+                        error += 1
+                        self._log(crawler.site_name, f"第{page}页获取失败: {e}", "error")
+                        page += 1
+
+                self._log(crawler.site_name, f"增量爬取完成")
+
+            except Exception as e:
+                self._log(site_key, f"爬取出错: {e}", "error")
+
+        max_workers = min(self.config.get("crawler", {}).get("max_workers", 8), len(sites))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(crawl_site, site) for site in sites]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception:
+                    pass
+
+        self.running = False
+        status = "cancelled" if self.cancelled else "completed"
+        update_task(
+            self.task_id,
+            status=status,
+            finished_at=datetime.now().isoformat(),
+            success_posts=success,
+            skipped_posts=skipped,
+            error_posts=error,
+        )
+
+        return {
+            "task_id": self.task_id,
+            "status": status,
+            "success": success,
+            "skipped": skipped,
+            "error": error,
+        }
