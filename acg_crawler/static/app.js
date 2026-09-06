@@ -234,15 +234,21 @@ document.addEventListener("DOMContentLoaded", function() {
 
         var images = [];
         try { images = JSON.parse(post.images || "[]"); } catch(e) {}
-        var rawImage = images[0] || "";
-        // 本地路径加/前缀，远程URL走代理
-        var image = "";
-        if (rawImage) {
-            if (rawImage.indexOf("images/") === 0) {
-                image = "/" + rawImage;
-            } else if (rawImage.indexOf("http") === 0) {
-                image = "/api/proxy_image?url=" + encodeURIComponent(rawImage);
-            }
+
+        // 构建图片网格：本地路径加/前缀，远程URL走代理
+        var imgsHtml = "";
+        if (images.length > 0) {
+            images.forEach(function(rawImg) {
+                var imgSrc = "";
+                if (rawImg.indexOf("images/") === 0) {
+                    imgSrc = "/" + rawImg;
+                } else if (rawImg.indexOf("http") === 0) {
+                    imgSrc = "/api/proxy_image?url=" + encodeURIComponent(rawImg);
+                }
+                if (imgSrc) {
+                    imgsHtml += '<img src="' + imgSrc + '" alt="" onerror="this.style.display=\'none\'">';
+                }
+            });
         }
 
         var platformTags = {
@@ -284,7 +290,7 @@ document.addEventListener("DOMContentLoaded", function() {
             statsHtml = '<div class="card-stats"><span class="stat-item">❤ ' + (post.likes || 0) + '</span><span class="stat-item">💬 ' + (post.comments || 0) + '</span><span class="stat-item">👁 ' + formatNumber(post.views || 0) + '</span></div>';
         }
 
-        card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images"><img src="' + image + '" alt="" onerror="this.style.display=\'none\'"></div><div class="card-body"><div class="card-title" onclick="copyTitle(this)" title="点击复制标题">' + displayTitle + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div></div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
+        card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images">' + imgsHtml + '</div><div class="card-body"><div class="card-title" onclick="copyTitle(this)" title="点击复制标题">' + displayTitle + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div></div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
         return card;
     }
 

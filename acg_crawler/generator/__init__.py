@@ -42,7 +42,10 @@ body {{ font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #
 .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; padding: 24px; max-width: 1400px; margin: 0 auto; }}
 .card {{ background: #181825; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a3e; transition: transform 0.2s; }}
 .card:hover {{ transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.4); }}
-.card-img {{ width: 100%; height: 200px; object-fit: cover; }}
+.card-imgs {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px; background: #0a0a0f; overflow: hidden; max-height: 220px; }}
+.card-imgs img {{ width: 100%; height: 100%; min-height: 100px; object-fit: cover; }}
+.card-imgs:has(img:nth-child(1):last-child) {{ grid-template-columns: 1fr; }}
+.no-img {{ display: flex; align-items: center; justify-content: center; height: 180px; color: #555; font-size: 14px; background: #181825; }}
 .card-body {{ padding: 16px; }}
 .card-title {{ font-size: 14px; font-weight: 500; line-height: 1.6; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }}
 .card-meta {{ display: flex; gap: 16px; font-size: 12px; color: #888; margin-bottom: 12px; }}
@@ -81,7 +84,7 @@ function copyText(el) {{
 
 CARD_TEMPLATE = """
 <div class="card">
-<img class="card-img" src="{image}" alt="" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 400 200%22><rect fill=%22%23181825%22 width=%22400%22 height=%22200%22/><text fill=%22%23555%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22>No Image</text></svg>'">
+<div class="card-imgs">{images_html}</div>
 <div class="card-body">
 <div class="card-title">{title}</div>
 <div class="card-meta">
@@ -104,14 +107,19 @@ def generate_html(posts, title, filename):
 
     cards_html = ""
     for post in posts:
-        # 图片 - 本地路径转base64，远程URL原样
+        # 图片 - 全部转base64嵌入
         images = []
         try:
             images = json.loads(post.get("images", "[]"))
         except:
             pass
-        raw_img = images[0] if images else ""
-        image = _img_to_data_uri(raw_img)
+        imgs_html = ""
+        for raw_img in images:
+            data_uri = _img_to_data_uri(raw_img)
+            if data_uri:
+                imgs_html += f'<img src="{data_uri}" alt="" onerror="this.style.display=\'none\'">'
+        if not imgs_html:
+            imgs_html = '<div class="no-img">No Image</div>'
 
         # 平台标签
         platform = post.get("platform", "unknown")
@@ -145,7 +153,7 @@ def generate_html(posts, title, filename):
             footer = f'<div class="card-footer">{"&nbsp;&nbsp;|&nbsp;&nbsp;".join(parts)}</div>'
 
         card = CARD_TEMPLATE.format(
-            image=image,
+            images_html=imgs_html,
             title=post.get("title", ""),
             platform_tag=platform_tag,
             source=post.get("source", ""),
@@ -170,9 +178,9 @@ def generate_html(posts, title, filename):
 
 def export_posts(posts):
     """导出帖子为HTML"""
-    pc_posts = [p for p in posts if p.get("platform") in ("pc",)]
-    android_posts = [p for p in posts if p.get("platform") in ("android",)]
-    mixed_posts = [p for p in posts if p.get("platform") in ("pc", "pc_android", "android")]
+    pc_posts = [p for p in posts if p.get("platform") == "pc"]
+    android_posts = [p for p in posts if p.get("platform") == "android"]
+    mixed_posts = [p for p in posts if p.get("platform") == "pc_android"]
 
     pc_file = generate_html(pc_posts, "ACG游戏资源 - PC下载", "PC下载.html")
     android_file = generate_html(android_posts, "ACG游戏资源 - 仅安卓", "仅安卓.html")

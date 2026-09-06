@@ -18,15 +18,16 @@ class ACGJLBCrawler(BaseCrawler):
         url = f"{self.base_url}/acggame?page={page_num}"
         soup = self._soup(url)
         results = []
-        # ACG俱乐部使用Zibll主题，帖子在 posts.posts-item 元素中
-        for item in soup.select("posts.posts-item"):
-            # 跳过置顶帖子（Zibll主题用 sticky/pinned 类或 .pin-badge 标记）
-            if item.get("class") and any(c in ("sticky", "pinned") for c in item.get("class", [])):
+        # ACG俱乐部使用Zibll主题，帖子在 div.posts-item 或 article 元素中
+        for item in soup.select("div.posts-item, article.post-item, .post-item"):
+            # 跳过置顶帖子
+            item_class = " ".join(item.get("class", []))
+            if "sticky" in item_class or "pinned" in item_class:
                 continue
             if item.select_one(".pin-badge, .sticky-label, .post-pin"):
                 continue
 
-            a = item.select_one("h2.item-heading > a")
+            a = item.select_one("h2.item-heading > a, h2 a, .item-title a")
             if a and a.get("href"):
                 link = a["href"]
                 if not link.startswith("http"):
@@ -164,7 +165,7 @@ class ACGJLBCrawler(BaseCrawler):
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
-        local_images = download_images(images[:3], source_id, proxy=proxy)
+        local_images = download_images(images, source_id, proxy=proxy)
         if local_images:
             images = local_images
 

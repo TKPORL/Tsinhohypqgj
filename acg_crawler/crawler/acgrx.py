@@ -189,7 +189,7 @@ class ACGRXCrawler(BaseCrawler):
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
-        local_images = download_images(images[:3], source_id, proxy=proxy)
+        local_images = download_images(images, source_id, proxy=proxy)
         if local_images:
             images = local_images
 

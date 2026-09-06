@@ -108,8 +108,8 @@ class ACGLLCrawler(BaseCrawler):
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
 
-        # 提取解压码（ACG图书馆固定为007721）
-        unzip_code = "007721"
+        # ACG图书馆没有解压码
+        unzip_code = ""
 
         # 判断平台 - 优先从分类标签判断
         platform = "unknown"
@@ -134,7 +134,7 @@ class ACGLLCrawler(BaseCrawler):
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
-        local_images = download_images(images[:3], source_id, proxy=proxy)
+        local_images = download_images(images, source_id, proxy=proxy)
         if local_images:
             images = local_images
 

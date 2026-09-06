@@ -13,10 +13,25 @@ class ACGYXJCrawler(BaseCrawler):
         super().__init__(config)
         self.site_name = "ACG游戏姬"
         self.base_url = "https://www.acgyxjvip.com"
+        self.alt_url = "https://www.acgyxjvip2.com"
+
+    def _fetch(self, url):
+        """先用主域名，失败则尝试备用域名"""
+        try:
+            return self._soup(url)
+        except Exception:
+            if self.alt_url and self.base_url in url:
+                try:
+                    return self._soup(url.replace(self.base_url, self.alt_url))
+                except Exception:
+                    return None
+            return None
 
     def get_list_page(self, page_num):
         url = f"{self.base_url}/page/{page_num}"
-        soup = self._soup(url)
+        soup = self._fetch(url)
+        if not soup:
+            return []
         results = []
         for article in soup.select("article.post-list"):
             a = article.select_one("h3.post-title a")
@@ -25,7 +40,6 @@ class ACGYXJCrawler(BaseCrawler):
                 if not link.startswith("http"):
                     link = self.base_url + link
 
-                # 从分类标签提取平台信息
                 category = ""
                 cat_el = article.select_one("div.category div.tags a")
                 if cat_el:
@@ -36,39 +50,33 @@ class ACGYXJCrawler(BaseCrawler):
 
     def _format_title(self, title, category=""):
         """格式化标题：[新作/类型/标签] 游戏名 [PC 大小] [C码]"""
-        import re as _re
         if not title:
             return title
 
-        # 提取前缀（新作/更新/等）
         prefix = ""
-        m = _re.match(r'^(新作|更新|汉化|原创)\s*', title)
+        m = re.match(r'^(新作|更新|汉化|原创)\s*', title)
         if m:
             prefix = m.group(1)
             title = title[m.end():]
 
-        # 提取第一个 [] 里的分类标签
         tags = ""
-        m = _re.match(r'[\[【]([^]】]+)[\]】]', title)
+        m = re.match(r'[\[【]([^]】]+)[\]】]', title)
         if m:
-            tags = m.group(1).replace("/", "/")
+            tags = m.group(1)
             title = title[m.end():].strip()
 
-        # 提取下载码 [C157555] 或 [PCC155555]
         code = ""
-        m = _re.search(r'\s*[\[【]([CPcp]?\d{5,})[\]】]\s*$', title)
+        m = re.search(r'\s*[\[【]([CPcp]?\d{5,})[\]】]\s*$', title)
         if m:
             code = m.group(1)
             title = title[:m.start()].strip()
 
-        # 提取大小 [1.10G] [3.75GB] [840M] 或 683MB]
         size = ""
-        m = _re.search(r'(?:[\[【])?(\d+\.?\d*\s*[GMgm][Bb]?)(?:[\]】])?\s*(?:[\[【][CPcp]?\d{5,}[\]】])?\s*$', title)
+        m = re.search(r'(?:[\[【])?(\d+\.?\d*\s*[GMgm][Bb]?)(?:[\]】])?\s*(?:[\[【][CPcp]?\d{5,}[\]】])?\s*$', title)
         if m:
             size = m.group(1)
             title = title[:m.start()].strip()
 
-        # 构建新标题
         parts = []
         if prefix or tags:
             tag_str = "/".join(filter(None, [prefix, tags]))
@@ -88,20 +96,19 @@ class ACGYXJCrawler(BaseCrawler):
 
         result = " ".join(parts)
         return result if result.strip() else title
-        soup = self._soup(url)
 
-        # 标题 - ACG游戏姬使用 h1（无特定class）
+    def parse_detail(self, url, category=""):
+        soup = self._fetch(url)
+        if not soup:
+            return None
+
         title_el = soup.select_one("h1")
         title = title_el.get_text(strip=True) if title_el else ""
-
-        # 标题格式化：提取各部分重新组合
         title = self._format_title(title, category)
 
-        # 内容 - ACG游戏姬使用 div.single-content
         content_el = soup.select_one("div.single-content")
         content = content_el.get_text(separator="\n", strip=True) if content_el else ""
 
-        # 提取图片 - 排除头像和emoji
         images = []
         if content_el:
             for img in content_el.select("img"):
@@ -111,7 +118,6 @@ class ACGYXJCrawler(BaseCrawler):
                         src = self.base_url + src
                     images.append(src)
 
-        # 提取互动数据
         likes = 0
         comments = 0
         views = 0
@@ -138,30 +144,24 @@ class ACGYXJCrawler(BaseCrawler):
             except:
                 pass
 
-        # 提取发布日期
         post_date = ""
         date_el = soup.select_one("time.post-date, .post-meta time, .entry-date")
         if date_el:
             post_date = date_el.get("datetime", "") or date_el.get_text(strip=True)
 
-        # 提取网盘链接
         links = extract_links(content)
         if not links.get("baidu_link") and not links.get("mobile_link"):
             full_text = str(soup)
             links = extract_links(full_text)
 
-        # 提取下载名追加到标题
         cloud_name = extract_cloud_name(content)
         if cloud_name and cloud_name not in title:
             title = f"{title} [{cloud_name}]"
 
-        # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
 
-        # 提取解压码
         unzip_code = ""
 
-        # 判断平台 - 优先从分类标签判断
         platform = "unknown"
         category_lower = (category or "").lower()
         title_lower = title.lower()
@@ -177,14 +177,12 @@ class ACGYXJCrawler(BaseCrawler):
         elif "pc" in title_lower or "steam" in title_lower:
             platform = "pc"
 
-        # 提取source_id
         source_id = url.split("/")[-1].replace(".html", "")
 
-        # 下载图片到本地（用source_id作为临时目录名）
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
-        local_images = download_images(images[:3], source_id, proxy=proxy)
+        local_images = download_images(images, source_id, proxy=proxy)
         if local_images:
             images = local_images
 
@@ -211,7 +209,9 @@ class ACGYXJCrawler(BaseCrawler):
 
     def get_total_pages(self):
         try:
-            soup = self._soup(self.base_url)
+            soup = self._fetch(self.base_url)
+            if not soup:
+                return 10
             page_links = soup.select("ul.pagination li a.page-link")
             max_page = 1
             for a in page_links:
@@ -220,4 +220,4 @@ class ACGYXJCrawler(BaseCrawler):
                     max_page = max(max_page, int(text))
             return max_page
         except:
-            return 100
+            return 10
