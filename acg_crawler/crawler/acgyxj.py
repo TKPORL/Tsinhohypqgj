@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links, extract_cloud_name, extract_cheat_code
+from parser import extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets
 from parser.image_handler import download_images
 
 class ACGYXJCrawler(BaseCrawler):
@@ -45,14 +45,24 @@ class ACGYXJCrawler(BaseCrawler):
                 if cat_el:
                     category = cat_el.get_text(strip=True)
 
+                # 跳过置顶/公告帖
+                title_text = a.get_text(strip=True)
+                skip_keywords = ["MTool", "喵笔记", "教程", "工具", "模拟器", "必看"]
+                if any(kw in title_text for kw in skip_keywords):
+                    continue
+
                 results.append({"url": link, "category": category})
         return results
 
     def _format_title(self, title, category=""):
-        """格式化标题：[新作/类型/标签] 游戏名 [PC 大小] [C码]"""
+        """格式化标题：[新作/类型/标签] 游戏名 [PC+安卓 大小] [C码]"""
         if not title:
             return title
 
+        # 保存原始标题用于平台检测
+        orig_title = title
+
+        # 先提取标签前缀 [新作/...] 或直接 新作...
         prefix = ""
         m = re.match(r'^(新作|更新|汉化|原创)\s*', title)
         if m:
@@ -65,34 +75,52 @@ class ACGYXJCrawler(BaseCrawler):
             tags = m.group(1)
             title = title[m.end():].strip()
 
+        # 提取云名 [PCC155555] 等
         code = ""
-        m = re.search(r'\s*[\[【]([CPcp]?\d{5,})[\]】]\s*$', title)
+        m = re.search(r'\s*[\[【]([A-Za-z]*\d{5,})[\]】]\s*$', title)
         if m:
             code = m.group(1)
             title = title[:m.start()].strip()
 
+        # 提取大小 - 处理已有的 [平台/大小] 格式（如 [PC+安卓/1.70G]、[PC/9G]）
         size = ""
-        m = re.search(r'(?:[\[【])?(\d+\.?\d*\s*[GMgm][Bb]?)(?:[\]】])?\s*(?:[\[【][CPcp]?\d{5,}[\]】])?\s*$', title)
+        # 匹配 [PC+安卓/1.70G] 或 [安卓/889M] 等整体模式
+        m = re.search(r'\s*[\[【](PC\+安卓|PC|安卓|android)[/\s](\d+\.?\d*\s*[GMgm][Bb]?)[\]】]', title, re.IGNORECASE)
         if m:
-            size = m.group(1)
+            size = m.group(2)
             title = title[:m.start()].strip()
+        else:
+            # 匹配独立的 [大小] 或纯大小
+            m = re.search(r'(?:[\[【])?(\d+\.?\d*\s*[GMgm][Bb]?)(?:[\]】])?\s*$', title)
+            if m:
+                size = m.group(1)
+                title = title[:m.start()].strip()
+
+        # 清理残留的半截括号（如 [PC+安卓/ 被提取后留下的）
+        title = re.sub(r'\s*[\[【]\s*$', '', title).strip()
+
+        # 判断平台类型（基于原始标题，包含所有信息）
+        all_text = (prefix + " " + tags + " " + orig_title).upper()
+        has_android = "安卓" in all_text or "ANDROID" in all_text
+        has_pc = "PC" in all_text
 
         parts = []
         if prefix or tags:
             tag_str = "/".join(filter(None, [prefix, tags]))
-            parts.append(f"[{tag_str}]")
+            parts.append(f"【{tag_str}】")
         parts.append(title)
         if size:
-            all_text = (prefix + " " + tags + " " + title).upper()
-            if "安卓" in all_text or "ANDROID" in all_text:
+            if has_android and has_pc:
+                plat = "PC+安卓"
+            elif has_android:
                 plat = ""
-            elif "PC" in all_text:
-                plat = "PC"
             else:
                 plat = "PC"
-            parts.append(f"[{plat} {size}]".strip() if plat else f"[{size}]")
+            parts.append(f"【{plat} {size}】".strip() if plat else f"【{size}】")
         if code:
-            parts.append(f"[{code}]")
+            # 云名去除平台前缀（如 PCC148222 → C148222）
+            clean_code = re.sub(r'^(PC|pc|Pc)', '', code)
+            parts.append(f"【{clean_code}】")
 
         result = " ".join(parts)
         return result if result.strip() else title
@@ -105,6 +133,9 @@ class ACGYXJCrawler(BaseCrawler):
         title_el = soup.select_one("h1")
         title = title_el.get_text(strip=True) if title_el else ""
         title = self._format_title(title, category)
+        title = fix_title_slash(title)
+        title = fix_title_tags(title)
+        title = fix_title_brackets(title)
 
         content_el = soup.select_one("div.single-content")
         content = content_el.get_text(separator="\n", strip=True) if content_el else ""
@@ -119,25 +150,9 @@ class ACGYXJCrawler(BaseCrawler):
                     images.append(src)
 
         likes = 0
-        comments = 0
-        views = 0
 
-        views_el = soup.select_one("span.list-post-view")
-        if views_el:
-            views_text = views_el.get_text(strip=True).replace("k", "000").replace(".", "")
-            try:
-                views = int(re.sub(r'[^\d]', '', views_text) or 0)
-            except:
-                pass
-
-        comments_el = soup.select_one("span.list-post-comment, .comments-number")
-        if comments_el:
-            try:
-                comments = int(re.sub(r'[^\d]', '', comments_el.get_text(strip=True)) or 0)
-            except:
-                pass
-
-        likes_el = soup.select_one(".post-like .like-count, .likes-count")
+        # 点赞 - span.like-count
+        likes_el = soup.select_one("span.like-count")
         if likes_el:
             try:
                 likes = int(re.sub(r'[^\d]', '', likes_el.get_text(strip=True)) or 0)
@@ -156,24 +171,32 @@ class ACGYXJCrawler(BaseCrawler):
 
         cloud_name = extract_cloud_name(content)
         if cloud_name and cloud_name not in title:
-            title = f"{title} [{cloud_name}]"
+            title = f"{title} 【{cloud_name}】"
 
         cheat_code = extract_cheat_code(title, content)
 
         unzip_code = ""
 
         platform = "unknown"
-        category_lower = (category or "").lower()
         title_lower = title.lower()
+        category_lower = (category or "").lower()
 
-        if category_lower == "pc":
-            platform = "pc"
-        elif category_lower == "az":
-            platform = "android"
-        elif "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
+        # 优先从标题判断（标题比分类更准确）
+        if "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower or ("pc" in title_lower and "安卓" in title_lower):
             platform = "pc_android"
+        elif category_lower == "pc":
+            platform = "pc"
+        elif category_lower in ("az", "安卓", "android"):
+            # ACG游戏姬分类标安卓的，标题里有PC就归为pc_android
+            if "pc" in title_lower:
+                platform = "pc_android"
+            else:
+                platform = "android"
         elif "安卓" in title_lower:
-            platform = "android"
+            if "pc" in title_lower:
+                platform = "pc_android"
+            else:
+                platform = "android"
         elif "pc" in title_lower or "steam" in title_lower:
             platform = "pc"
 
@@ -194,8 +217,8 @@ class ACGYXJCrawler(BaseCrawler):
             "platform": platform,
             "content": content[:5000],
             "likes": likes,
-            "comments": comments,
-            "views": views,
+            "comments": 0,
+            "views": 0,
             "unzip_code": unzip_code,
             "cheat_code": cheat_code,
             "baidu_link": links.get("baidu_link"),

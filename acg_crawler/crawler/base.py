@@ -7,6 +7,10 @@ from bs4 import BeautifulSoup
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# 验证页特征（状态码200但内容是验证/登录页）
+VERIFY_PAGE_HINTS = ["cloudflare", "captcha", "verify", "just a moment",
+                     "请完成验证", "访问受限", "登录后查看", "人机验证"]
+
 class BaseCrawler(ABC):
     """爬虫基类"""
 
@@ -21,6 +25,8 @@ class BaseCrawler(ABC):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         })
+        self._consecutive_failures = 0
+        self._paused_until = 0.0
         self._setup_proxy()
 
     def _setup_proxy(self):
@@ -34,21 +40,62 @@ class BaseCrawler(ABC):
         max_delay = self.config.get("crawler", {}).get("request_delay_max", 1.5)
         time.sleep(random.uniform(min_delay, max_delay))
 
+    def _throttle_on_failure(self):
+        """连续失败后指数退避，熔断保护"""
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= 5:
+            # 连续5次失败：暂停30秒
+            self._paused_until = time.time() + 30
+            self._consecutive_failures = 0
+        elif self._consecutive_failures >= 3:
+            # 连续3次失败：退避2^n秒
+            time.sleep(min(2 ** self._consecutive_failures, 8))
+
+    def _reset_failures(self):
+        self._consecutive_failures = 0
+
+    def _check_pause(self):
+        """检查是否处于熔断暂停期"""
+        if self._paused_until > time.time():
+            time.sleep(self._paused_until - time.time())
+            self._paused_until = 0.0
+
+    def _is_verify_page(self, resp):
+        """检测状态码200的验证页/异常空页面"""
+        if resp.status_code != 200:
+            return False
+        text = resp.text[:3000].lower()
+        if any(hint in text for hint in VERIFY_PAGE_HINTS):
+            return True
+        # 页面过短且无实质内容
+        if len(resp.text) < 200:
+            return True
+        return False
+
     def _request(self, url, retries=3):
         for attempt in range(retries):
+            self._check_pause()
             try:
                 self._delay()
                 resp = self.session.get(url, timeout=self.config.get("crawler", {}).get("timeout", 15))
                 resp.raise_for_status()
+                if self._is_verify_page(resp):
+                    raise requests.RequestException(f"检测到验证页: {url}")
+                self._reset_failures()
                 return resp
             except Exception as e:
+                self._throttle_on_failure()
                 # 代理失败时尝试直连
                 if self._proxy_enabled and attempt == 0:
                     try:
                         old_proxies = self.session.proxies.copy()
                         self.session.proxies = {}
                         resp = self.session.get(url, timeout=self.config.get("crawler", {}).get("timeout", 15))
+                        self.session.proxies = old_proxies
                         resp.raise_for_status()
+                        if self._is_verify_page(resp):
+                            raise requests.RequestException(f"检测到验证页: {url}")
+                        self._reset_failures()
                         return resp
                     except:
                         self.session.proxies = old_proxies

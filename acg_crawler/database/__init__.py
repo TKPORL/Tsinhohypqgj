@@ -1,14 +1,25 @@
 """数据库模块"""
 import sqlite3
+import threading
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from contextlib import contextmanager
 
 DB_PATH = Path(__file__).parent.parent / "data" / "crawler.db"
+DB_BUSY_TIMEOUT_MS = 10000
+DB_WRITE_RETRIES = 5
+_WRITE_LOCK = threading.RLock()
 
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
+        # 先检查并添加crawl_id列（如果不存在）
+        try:
+            conn.execute("SELECT crawl_id FROM posts LIMIT 1")
+        except:
+            conn.execute("ALTER TABLE posts ADD COLUMN crawl_id INTEGER")
+        
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS posts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +42,7 @@ def init_db():
                 original_images TEXT,
                 crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 post_date TEXT,
+                crawl_id INTEGER,
                 UNIQUE(source, source_id)
             );
 
@@ -53,15 +65,34 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_posts_platform ON posts(platform);
             CREATE INDEX IF NOT EXISTS idx_posts_date ON posts(post_date);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+            CREATE INDEX IF NOT EXISTS idx_posts_crawl_id ON posts(crawl_id);
         """)
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(
+        str(DB_PATH),
+        timeout=DB_BUSY_TIMEOUT_MS / 1000,
+        check_same_thread=False,
+    )
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
     try:
         yield conn
-        conn.commit()
+        for attempt in range(DB_WRITE_RETRIES):
+            try:
+                with _WRITE_LOCK:
+                    conn.commit()
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == DB_WRITE_RETRIES - 1:
+                    raise
+                time.sleep(0.05 * (2 ** attempt))
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -74,8 +105,8 @@ def insert_post(post_data):
             (source, source_id, source_url, title, platform, content,
              likes, comments, views, unzip_code, cheat_code,
              baidu_link, baidu_code, mobile_link, mobile_code,
-             images, original_images, post_date, crawled_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             images, original_images, post_date, crawled_at, crawl_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             post_data.get("source"),
             post_data.get("source_id"),
@@ -96,6 +127,7 @@ def insert_post(post_data):
             post_data.get("original_images"),
             post_data.get("post_date"),
             local_now,
+            post_data.get("crawl_id"),
         ))
 
 def get_posts(platform=None, source=None, limit=100, offset=0):
@@ -106,9 +138,8 @@ def get_posts(platform=None, source=None, limit=100, offset=0):
             if platform == "pc":
                 query += " AND (platform = 'pc' OR platform = 'unknown')"
             elif platform == "pc_android":
-                query += " AND platform = 'pc_android'"
-            elif platform == "android":
-                query += " AND platform = 'android'"
+                # android全部归入pc_android
+                query += " AND (platform = 'pc_android' OR platform = 'android')"
             else:
                 query += " AND platform = ?"
                 params.append(platform)
@@ -117,13 +148,6 @@ def get_posts(platform=None, source=None, limit=100, offset=0):
             params.append(source)
         query += """ ORDER BY
             (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 0 ELSE 1 END),
-            (CASE source
-                WHEN 'ACG游戏姬' THEN 1
-                WHEN 'ACG图书馆' THEN 2
-                WHEN 'ACG俱乐部' THEN 3
-                WHEN '萌幻ACG' THEN 4
-                ELSE 5
-            END),
             likes DESC
             LIMIT ? OFFSET ?"""
         params.extend([limit, offset])
@@ -137,9 +161,8 @@ def get_post_count(platform=None, source=None):
             if platform == "pc":
                 query += " AND (platform = 'pc' OR platform = 'unknown')"
             elif platform == "pc_android":
-                query += " AND platform = 'pc_android'"
-            elif platform == "android":
-                query += " AND platform = 'android'"
+                # android全部归入pc_android
+                query += " AND (platform = 'pc_android' OR platform = 'android')"
             else:
                 query += " AND platform = ?"
                 params.append(platform)
@@ -165,10 +188,33 @@ def create_task(task_type, params, sites):
         return cursor.lastrowid
 
 def update_task(task_id, **kwargs):
+    if not kwargs:
+        return
+    allowed_fields = {
+        "status", "started_at", "finished_at",
+        "success_posts", "skipped_posts", "error_posts"
+    }
+    invalid_fields = set(kwargs) - allowed_fields
+    if invalid_fields:
+        raise ValueError(f"不允许更新任务字段: {', '.join(sorted(invalid_fields))}")
     with get_conn() as conn:
-        sets = ", ".join(f"{k} = ?" for k in kwargs)
+        sets = ", ".join(f"{key} = ?" for key in kwargs)
         values = list(kwargs.values()) + [task_id]
         conn.execute(f"UPDATE tasks SET {sets} WHERE id = ?", values)
+
+def recover_interrupted_tasks():
+    """应用启动时将上次异常退出遗留的运行中任务标记为已中断。"""
+    finished_at = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'interrupted', finished_at = ?
+            WHERE status = 'running'
+            """,
+            (finished_at,),
+        )
+        return cursor.rowcount
 
 def get_tasks(limit=20):
     with get_conn() as conn:
@@ -180,3 +226,46 @@ def get_task(task_id):
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return dict(row) if row else None
+
+def get_crawl_batches():
+    """获取所有爬取批次，按时间倒序"""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT crawl_id, 
+                   MIN(crawled_at) as crawl_time,
+                   COUNT(*) as post_count,
+                   SUM(CASE WHEN platform='pc' THEN 1 ELSE 0 END) as pc_count,
+                   SUM(CASE WHEN platform IN ('pc_android','android') THEN 1 ELSE 0 END) as android_count
+            FROM posts 
+            WHERE crawl_id IS NOT NULL
+            GROUP BY crawl_id
+            ORDER BY crawl_id DESC
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+def get_posts_by_crawl_id(crawl_id, platform=None):
+    """按爬取批次获取帖子"""
+    with get_conn() as conn:
+        query = "SELECT * FROM posts WHERE crawl_id = ?"
+        params = [crawl_id]
+        if platform and platform != "all":
+            if platform == "pc":
+                query += " AND (platform = 'pc' OR platform = 'unknown')"
+            elif platform == "pc_android":
+                query += " AND (platform = 'pc_android' OR platform = 'android')"
+        query += """ ORDER BY
+            (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 0 ELSE 1 END),
+            likes DESC"""
+        return [dict(row) for row in conn.execute(query, params).fetchall()]
+
+def get_batch_post_count(crawl_id, platform=None):
+    """获取某批次的帖子数量"""
+    with get_conn() as conn:
+        query = "SELECT COUNT(*) FROM posts WHERE crawl_id = ?"
+        params = [crawl_id]
+        if platform and platform != "all":
+            if platform == "pc":
+                query += " AND (platform = 'pc' OR platform = 'unknown')"
+            elif platform == "pc_android":
+                query += " AND (platform = 'pc_android' OR platform = 'android')"
+        return conn.execute(query, params).fetchone()[0]

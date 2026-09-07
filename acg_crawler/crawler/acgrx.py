@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links, extract_cloud_name, extract_cheat_code
+from parser import extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets
 from parser.image_handler import download_images
 
 class ACGRXCrawler(BaseCrawler):
@@ -121,6 +121,27 @@ class ACGRXCrawler(BaseCrawler):
         title_el = soup.select_one("div.post-contentr h1")
         title = title_el.get_text(strip=True) if title_el else ""
 
+        # 修复标题：如果【大小】里没有平台，自动从标签里提取添加
+        # 【ADV/PC/汉化】游戏名【12.53GB】→ 【ADV/PC/汉化】游戏名【PC 12.53GB】
+        m = re.search(r'【(\d+\.?\d*GB?)】', title)
+        if m:
+            size_text = m.group(1)
+            # 检查标签里有没有平台
+            tags_part = title[:m.start()]
+            if 'PC' in tags_part or 'pc' in tags_part:
+                new_size = f'【PC {size_text}】'
+            elif '安卓' in tags_part or 'Android' in tags_part or 'AZ' in tags_part:
+                new_size = f'【安卓 {size_text}】'
+            else:
+                new_size = f'【PC {size_text}】'  # 默认PC
+            title = title[:m.start()] + new_size + title[m.end():]
+
+        # 修复斜杠：【PC/1.08GB】→【PC 1.08GB】
+        title = re.sub(r'【(PC\+安卓|PC|安卓)/(\d+\.?\d*[GMgm][Bb]?[Bb]?)】', r'【\1 \2】', title)
+        title = fix_title_slash(title)
+        title = fix_title_tags(title)
+        title = fix_title_brackets(title)
+
         # 内容
         content_el = soup.select_one("div.post-contentr")
         content = ""
@@ -158,13 +179,24 @@ class ACGRXCrawler(BaseCrawler):
         # 提取下载名追加到标题
         cloud_name = extract_cloud_name(content)
         if cloud_name and cloud_name not in title:
-            title = f"{title} [{cloud_name}]"
+            title = f"{title} 【{cloud_name}】"
 
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
 
-        # 提取解压码（萌幻ACG固定为唯ai雪莉酒）
-        unzip_code = "唯ai雪莉酒"
+        # 提取解压码 - 从内容中提取（如 "解压密码：xxx" 或 "密码：xxx"）
+        unzip_code = ""
+        unzip_patterns = [
+            r'(?:解压密码|统一解压密码|解压码|密码)[：:\s]*(\S+)',
+        ]
+        for pat in unzip_patterns:
+            m = re.search(pat, content)
+            if m:
+                code = m.group(1).strip()
+                # 过滤掉明显不是解压码的内容
+                if len(code) >= 3 and not code.startswith("http") and "使用" not in code:
+                    unzip_code = code
+                    break
 
         # 判断平台 - 优先从分类标签判断
         platform = "unknown"

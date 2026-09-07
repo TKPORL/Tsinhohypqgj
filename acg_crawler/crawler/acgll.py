@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links, extract_cloud_name, extract_cheat_code
+from parser import extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets
 from parser.image_handler import download_images
 
 class ACGLLCrawler(BaseCrawler):
@@ -25,6 +25,12 @@ class ACGLLCrawler(BaseCrawler):
                 link = a["href"]
                 if not link.startswith("http"):
                     link = self.base_url + link
+
+                # 跳过置顶/公告帖
+                title_text = a.get_text(strip=True)
+                skip_keywords = ["教程", "模拟器", "工具", "必看", "合集"]
+                if any(kw in title_text for kw in skip_keywords):
+                    continue
 
                 # 从标签提取平台信息
                 category = ""
@@ -48,6 +54,12 @@ class ACGLLCrawler(BaseCrawler):
         title_el = soup.select_one("h1.article-title")
         title = title_el.get_text(strip=True) if title_el else ""
 
+        # 修复标题格式：【安卓/538M】→ 【安卓 538M】（斜杠换空格）
+        title = re.sub(r'【(PC\+安卓|PC|安卓|android)/(\d+\.?\d*[GMgm][Bb]?)】', r'【\1 \2】', title)
+        title = fix_title_slash(title)
+        title = fix_title_tags(title)
+        title = fix_title_brackets(title)
+
         # 内容 - ACG图书馆使用 div.wp-posts-content
         content_el = soup.select_one("div.wp-posts-content")
         content = content_el.get_text(separator="\n", strip=True) if content_el else ""
@@ -62,29 +74,12 @@ class ACGLLCrawler(BaseCrawler):
                         src = self.base_url + src
                     images.append(src)
 
-        # 提取互动数据
+        # 提取点赞数
         likes = 0
-        comments = 0
-        views = 0
-
         likes_el = soup.select_one(".content-footer-zan-cai .like-count, .meta-like")
         if likes_el:
             try:
                 likes = int(re.sub(r'[^\d]', '', likes_el.get_text(strip=True)) or 0)
-            except:
-                pass
-
-        comments_el = soup.select_one(".comments-number, .meta-comm")
-        if comments_el:
-            try:
-                comments = int(re.sub(r'[^\d]', '', comments_el.get_text(strip=True)) or 0)
-            except:
-                pass
-
-        views_el = soup.select_one(".meta-view, .views-num")
-        if views_el:
-            try:
-                views = int(re.sub(r'[^\d]', '', views_el.get_text(strip=True)) or 0)
             except:
                 pass
 
@@ -103,7 +98,7 @@ class ACGLLCrawler(BaseCrawler):
         # 提取下载名追加到标题
         cloud_name = extract_cloud_name(content)
         if cloud_name and cloud_name not in title:
-            title = f"{title} [{cloud_name}]"
+            title = f"{title} 【{cloud_name}】"
 
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
@@ -146,8 +141,8 @@ class ACGLLCrawler(BaseCrawler):
             "platform": platform,
             "content": content[:5000],
             "likes": likes,
-            "comments": comments,
-            "views": views,
+            "comments": 0,
+            "views": 0,
             "unzip_code": unzip_code,
             "cheat_code": cheat_code,
             "baidu_link": links.get("baidu_link"),

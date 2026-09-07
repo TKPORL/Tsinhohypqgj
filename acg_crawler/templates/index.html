@@ -51,6 +51,15 @@
                     </div>
                 </div>
 
+                <div class="form-group">
+                    <label>速度档位</label>
+                    <div class="radio-group speed-group">
+                        <label class="radio-label"><input type="radio" name="speedMode" value="stable"> 稳定</label>
+                        <label class="radio-label"><input type="radio" name="speedMode" value="balanced" checked> 平衡</label>
+                        <label class="radio-label"><input type="radio" name="speedMode" value="fast"> 快速</label>
+                    </div>
+                </div>
+
                 <div class="form-group" id="pageGroup">
                     <label>页码范围</label>
                     <div class="page-inputs">
@@ -83,11 +92,12 @@
                 <div class="form-actions">
                     <button class="btn btn-primary" id="startBtn">开始爬取</button>
                     <button class="btn btn-danger hidden" id="stopBtn">停止爬取</button>
+                    <button class="btn btn-sm" id="redownloadBtn" onclick="redownloadImages()">重新下载图片</button>
                 </div>
 
                 <div class="progress-section hidden" id="progressSection">
                     <div class="progress-header">
-                        <span>爬取进度</span>
+                        <span>总体进度</span>
                         <span id="progressText">0 / 0</span>
                     </div>
                     <div class="progress-bar">
@@ -98,8 +108,11 @@
                         <span class="stat skipped">跳过: <strong id="statSkipped">0</strong></span>
                         <span class="stat error">失败: <strong id="statError">0</strong></span>
                     </div>
+                    <div class="site-panels" id="sitePanels">
+                        <!-- 站点独立窗口由JS动态生成 -->
+                    </div>
                     <div class="log-box" id="logBox">
-                        <div class="log-line">[系统] 等待开始...</div>
+                        <div class="log-line">【系统】等待开始...</div>
                     </div>
                 </div>
             </div>
@@ -120,7 +133,6 @@
                             <button class="plat-tab active" data-plat="all" onclick="switchPlatTab(this)">全部</button>
                             <button class="plat-tab" data-plat="pc" onclick="switchPlatTab(this)">PC</button>
                             <button class="plat-tab" data-plat="pc_android" onclick="switchPlatTab(this)">PC+安卓</button>
-                            <button class="plat-tab" data-plat="android" onclick="switchPlatTab(this)">安卓</button>
                         </div>
                         <span class="result-count">共 <strong id="resultCount">0</strong> 条</span>
                     </div>
@@ -169,27 +181,33 @@
                 <div class="export-stats">
                     <p>当前数据库共有 <strong id="exportTotal">0</strong> 条记录</p>
                 </div>
-                <div class="export-cards">
-                    <div class="export-card">
-                        <div class="export-icon">PC</div>
-                        <h3>PC下载.html</h3>
-                        <p>仅包含PC平台的游戏资源</p>
-                        <div class="export-count"><strong id="countPc">0</strong> 条</div>
-                        <button class="btn btn-primary" onclick="doExport('pc')">下载 PC下载.html</button>
+                
+                <!-- 按批次导出 -->
+                <div class="export-section">
+                    <h3>按爬取批次导出</h3>
+                    <div id="batchList" class="batch-list">
+                        <p class="loading-text">加载中...</p>
                     </div>
-                    <div class="export-card">
-                        <div class="export-icon">安卓</div>
-                        <h3>仅安卓.html</h3>
-                        <p>仅包含安卓平台的游戏资源</p>
-                        <div class="export-count"><strong id="countAndroid">0</strong> 条</div>
-                        <button class="btn btn-primary" onclick="doExport('android')">下载 仅安卓.html</button>
-                    </div>
-                    <div class="export-card">
-                        <div class="export-icon">PC+安卓</div>
-                        <h3>PC+安卓下载.html</h3>
-                        <p>包含PC和安卓双平台的游戏资源</p>
-                        <div class="export-count"><strong id="countMixed">0</strong> 条</div>
-                        <button class="btn btn-primary" onclick="doExport('mixed')">下载 PC+安卓下载.html</button>
+                </div>
+                
+                <!-- 全量导出 -->
+                <div class="export-section">
+                    <h3>全量导出</h3>
+                    <div class="export-cards">
+                        <div class="export-card">
+                            <div class="export-icon">PC</div>
+                            <h3>PC下载.zip</h3>
+                            <p>仅包含PC平台的游戏资源（含图片）</p>
+                            <div class="export-count"><strong id="countPc">0</strong> 条</div>
+                            <button class="btn btn-primary" onclick="doExport('pc')">下载 PC下载.zip</button>
+                        </div>
+                        <div class="export-card">
+                            <div class="export-icon">PC+安卓</div>
+                            <h3>PC+安卓下载.zip</h3>
+                            <p>包含PC和安卓双平台的游戏资源（含图片）</p>
+                            <div class="export-count"><strong id="countMixed">0</strong> 条</div>
+                            <button class="btn btn-primary" onclick="doExport('mixed')">下载 PC+安卓下载.zip</button>
+                        </div>
                     </div>
                 </div>
             </div>

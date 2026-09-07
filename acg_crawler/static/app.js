@@ -44,7 +44,75 @@ document.addEventListener("DOMContentLoaded", function() {
     const logBox = document.getElementById("logBox");
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
+    const sitePanelsContainer = document.getElementById("sitePanels");
     let pollTimer = null;
+
+    const SITE_NAMES = {
+        acgyxj: "ACG游戏姬",
+        acgrx: "萌幻ACG",
+        acgll: "ACG图书馆",
+        acgjlb: "ACG俱乐部"
+    };
+    const STATUS_LABELS = {
+        waiting: "等待中",
+        running: "运行中",
+        completed: "完成",
+        failed: "失败",
+        cancelled: "已停止"
+    };
+
+    function renderSitePanels(siteStates, siteLogs) {
+        if (!sitePanelsContainer || !siteStates) return;
+        var keys = Object.keys(siteStates);
+        if (!keys.length) return;
+
+        keys.forEach(function(siteKey) {
+            var state = siteStates[siteKey];
+            var panel = sitePanelsContainer.querySelector('[data-site="' + siteKey + '"]');
+            if (!panel) {
+                panel = document.createElement("div");
+                panel.className = "site-panel";
+                panel.dataset.site = siteKey;
+                panel.innerHTML =
+                    '<div class="site-panel-header">' +
+                    '<span class="site-panel-name">' + (SITE_NAMES[siteKey] || siteKey) + '</span>' +
+                    '<span class="site-panel-status">等待中</span>' +
+                    '</div>' +
+                    '<div class="site-panel-stats">' +
+                    '<span>进度: <strong class="sp-progress">0/0</strong></span>' +
+                    '<span>✓ <strong class="sp-success">0</strong></span>' +
+                    '<span>跳过 <strong class="sp-skipped">0</strong></span>' +
+                    '<span>✗ <strong class="sp-error">0</strong></span>' +
+                    '</div>' +
+                    '<div class="site-panel-progress"><div class="site-panel-progress-fill"></div></div>' +
+                    '<div class="site-panel-logs"></div>';
+                sitePanelsContainer.appendChild(panel);
+            }
+
+            var statusEl = panel.querySelector(".site-panel-status");
+            statusEl.textContent = STATUS_LABELS[state.status] || state.status;
+            statusEl.className = "site-panel-status " + (state.status || "");
+
+            panel.querySelector(".sp-progress").textContent = (state.current || 0) + "/" + (state.total || 0);
+            panel.querySelector(".sp-success").textContent = state.success || 0;
+            panel.querySelector(".sp-skipped").textContent = state.skipped || 0;
+            panel.querySelector(".sp-error").textContent = state.error || 0;
+
+            var pct = state.total > 0 ? Math.round((state.current / state.total) * 100) : 0;
+            panel.querySelector(".site-panel-progress-fill").style.width = pct + "%";
+
+            var logsEl = panel.querySelector(".site-panel-logs");
+            var logs = (siteLogs && siteLogs[siteKey]) || [];
+            logsEl.innerHTML = "";
+            logs.slice(-15).forEach(function(log) {
+                var line = document.createElement("div");
+                line.className = "log-line" + (log.level === "error" ? " error" : "");
+                line.textContent = log.text;
+                logsEl.appendChild(line);
+            });
+            logsEl.scrollTop = logsEl.scrollHeight;
+        });
+    }
 
     startBtn.addEventListener("click", function() {
         const sites = [];
@@ -57,7 +125,8 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         const mode = document.querySelector('input[name="crawlMode"]:checked').value;
-        const body = { mode: mode, sites: sites };
+        const speed = document.querySelector('input[name="speedMode"]:checked').value || "balanced";
+        const body = { mode: mode, sites: sites, speed: speed };
 
         if (mode === "by_page") {
             body.start_page = parseInt(document.getElementById("startPage").value) || 1;
@@ -81,6 +150,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 statusDot.classList.add("running");
                 statusText.textContent = "爬取中...";
                 logBox.innerHTML = "";
+                sitePanelsContainer.innerHTML = "";
                 pollProgress();
             } else {
                 alert(data.message || "启动失败");
@@ -108,6 +178,9 @@ document.addEventListener("DOMContentLoaded", function() {
                     document.getElementById("statSuccess").textContent = data.success;
                     document.getElementById("statSkipped").textContent = data.skipped;
                     document.getElementById("statError").textContent = data.error;
+
+                    // 四站独立窗口
+                    renderSitePanels(data.site_states, data.site_logs);
 
                     if (data.recent_logs) {
                         // 只在用户已经在底部时才自动滚动
@@ -253,7 +326,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         var platformTags = {
             pc: '<span class="tag tag-pc">PC</span>',
-            android: '<span class="tag tag-android">安卓</span>',
+            android: '<span class="tag tag-pc">PC</span><span class="tag tag-android">安卓</span>',
             pc_android: '<span class="tag tag-pc">PC</span><span class="tag tag-android">安卓</span>',
             unknown: '<span class="tag tag-pc">未知</span>'
         };
@@ -285,10 +358,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         var displayTitle = post.title.replace(/【([^】]*)\/([^】]*)】/g, '【$1 $2】');
 
-        var statsHtml = '';
-        if (post.source !== '萌幻ACG') {
-            statsHtml = '<div class="card-stats"><span class="stat-item">❤ ' + (post.likes || 0) + '</span><span class="stat-item">💬 ' + (post.comments || 0) + '</span><span class="stat-item">👁 ' + formatNumber(post.views || 0) + '</span></div>';
-        }
+        var statsHtml = '<div class="card-stats"><span class="stat-item">❤ ' + (post.likes || 0) + '</span></div>';
 
         card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images">' + imgsHtml + '</div><div class="card-body"><div class="card-title" onclick="copyTitle(this)" title="点击复制标题">' + displayTitle + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div></div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
         return card;
@@ -370,14 +440,15 @@ document.addEventListener("DOMContentLoaded", function() {
                         running: '<span class="badge badge-warning">运行中</span>',
                         failed: '<span class="badge badge-error">失败</span>',
                         cancelled: '<span class="badge badge-warning">已取消</span>',
+                        interrupted: '<span class="badge badge-error">已中断</span>',
+                        pending: '<span class="badge">等待中</span>',
                     }[task.status] || task.status;
 
                     var dlBtns = '';
                     if (task.status === 'completed') {
                         dlBtns = '<div class="history-dl-btns">' +
-                            '<a href="/api/export_download?type=pc" class="btn btn-sm btn-dl" download>PC.html</a>' +
-                            '<a href="/api/export_download?type=android" class="btn btn-sm btn-dl" download>安卓.html</a>' +
-                            '<a href="/api/export_download?type=mixed" class="btn btn-sm btn-dl" download>PC+安卓.html</a>' +
+                            '<a href="/api/export_download?type=pc" class="btn btn-sm btn-dl" download>PC.zip</a>' +
+                            '<a href="/api/export_download?type=mixed" class="btn btn-sm btn-dl" download>PC+安卓.zip</a>' +
                             '</div>';
                     }
 
@@ -408,14 +479,70 @@ document.addEventListener("DOMContentLoaded", function() {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 document.getElementById("countPc").textContent = data.pc || 0;
-                document.getElementById("countAndroid").textContent = data.android || 0;
                 document.getElementById("countMixed").textContent = data.mixed || 0;
             });
+        // 加载爬取批次
+        loadCrawlBatches();
     }
+
+    function loadCrawlBatches() {
+        fetch("/api/crawl_batches")
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var container = document.getElementById("batchList");
+                if (!data.batches || data.batches.length === 0) {
+                    container.innerHTML = '<p class="empty-text">暂无爬取记录</p>';
+                    return;
+                }
+                
+                var html = '';
+                data.batches.forEach(function(batch) {
+                    var time = batch.crawl_time ? batch.crawl_time.replace('T', ' ').substring(0, 19) : '未知';
+                    html += '<div class="batch-item">';
+                    html += '<div class="batch-info">';
+                    html += '<span class="batch-time">📅 ' + time + '</span>';
+                    html += '<span class="batch-count">共 ' + batch.post_count + ' 条</span>';
+                    html += '</div>';
+                    html += '<div class="batch-actions">';
+                    if (batch.pc_count > 0) {
+                        html += '<button class="btn btn-sm" onclick="exportBatch(' + batch.crawl_id + ', \'pc\')">PC (' + batch.pc_count + ')</button>';
+                    }
+                    if (batch.android_count > 0) {
+                        html += '<button class="btn btn-sm" onclick="exportBatch(' + batch.crawl_id + ', \'pc_android\')">PC+安卓 (' + batch.android_count + ')</button>';
+                    }
+                    html += '</div>';
+                    html += '</div>';
+                });
+                container.innerHTML = html;
+            });
+    }
+
+    window.exportBatch = function(crawlId, platform) {
+        window.location.href = "/api/export_batch?crawl_id=" + crawlId + "&platform=" + platform;
+    };
 
     // 直接下载导出文件
     window.doExport = function(type) {
         window.location.href = "/api/export_download?type=" + type;
+    };
+
+    // 重新下载图片
+    window.redownloadImages = function() {
+        if (!confirm("将远程图片下载到本地，可能需要几分钟。继续？")) return;
+        var btn = document.getElementById("redownloadBtn");
+        btn.textContent = "下载中...";
+        btn.disabled = true;
+        fetch("/api/redownload_images", {method: "POST"})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                btn.textContent = "重新下载图片";
+                btn.disabled = false;
+                if (data.status === "ok") {
+                    alert("重新下载已启动，请等待日志完成");
+                } else {
+                    alert("启动失败");
+                }
+            });
     };
 });
 
@@ -446,3 +573,108 @@ function copyTitle(el) {
         }, 800);
     });
 }
+
+// ===== 图片灯箱 =====
+var lightboxState = { images: [], index: 0, overlay: null };
+
+function openLightbox(sources, startIndex) {
+    lightboxState.images = sources || [];
+    lightboxState.index = startIndex || 0;
+    if (!lightboxState.images.length) return;
+
+    var overlay = document.createElement("div");
+    overlay.className = "lightbox-overlay";
+
+    var counter = document.createElement("div");
+    counter.className = "lightbox-counter";
+
+    var img = document.createElement("img");
+    img.className = "lightbox-img";
+    img.alt = "";
+
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "lightbox-close";
+    closeBtn.textContent = "×";
+
+    var prevBtn = document.createElement("button");
+    prevBtn.className = "lightbox-nav lightbox-prev";
+    prevBtn.textContent = "‹";
+
+    var nextBtn = document.createElement("button");
+    nextBtn.className = "lightbox-nav lightbox-next";
+    nextBtn.textContent = "›";
+
+    overlay.appendChild(counter);
+    overlay.appendChild(img);
+    overlay.appendChild(closeBtn);
+    if (lightboxState.images.length > 1) {
+        overlay.appendChild(prevBtn);
+        overlay.appendChild(nextBtn);
+    }
+    document.body.appendChild(overlay);
+    document.body.style.overflow = "hidden";
+
+    lightboxState.overlay = overlay;
+
+    function render() {
+        img.src = lightboxState.images[lightboxState.index];
+        counter.textContent = (lightboxState.index + 1) + " / " + lightboxState.images.length;
+        var multi = lightboxState.images.length > 1;
+        prevBtn.style.display = multi ? "" : "none";
+        nextBtn.style.display = multi ? "" : "none";
+    }
+
+    function close() {
+        if (lightboxState.overlay) {
+            document.body.removeChild(lightboxState.overlay);
+            document.body.style.overflow = "";
+            lightboxState.overlay = null;
+        }
+    }
+
+    function step(delta) {
+        var n = lightboxState.images.length;
+        if (!n) return;
+        lightboxState.index = (lightboxState.index + delta + n) % n;
+        render();
+    }
+
+    overlay.addEventListener("click", function(e) {
+        if (e.target === overlay || e.target === img) close();
+    });
+    closeBtn.addEventListener("click", close);
+    prevBtn.addEventListener("click", function(e) { e.stopPropagation(); step(-1); });
+    nextBtn.addEventListener("click", function(e) { e.stopPropagation(); step(1); });
+
+    overlay._keydown = function(e) {
+        if (e.key === "Escape") close();
+        else if (e.key === "ArrowLeft") step(-1);
+        else if (e.key === "ArrowRight") step(1);
+    };
+    document.addEventListener("keydown", overlay._keydown);
+
+    var observer = new MutationObserver(function() {
+        if (!document.body.contains(overlay)) {
+            document.removeEventListener("keydown", overlay._keydown);
+            document.body.style.overflow = "";
+            observer.disconnect();
+        }
+    });
+    observer.observe(document.body, { childList: true });
+
+    render();
+}
+
+// 卡片图片绑定灯箱：事件委托，处理动态渲染的卡片
+document.addEventListener("click", function(e) {
+    var img = e.target.closest(".card-images img");
+    if (!img) return;
+    var container = img.closest(".card-images");
+    if (!container) return;
+    var sources = [];
+    container.querySelectorAll("img").forEach(function(im) {
+        if (im.src) sources.push(im.src);
+    });
+    var idx = Array.prototype.indexOf.call(container.querySelectorAll("img"), img);
+    openLightbox(sources, idx);
+});
