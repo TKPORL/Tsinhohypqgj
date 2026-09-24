@@ -5,7 +5,7 @@ import time
 import threading
 import requests as req_lib
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file, Response, make_response
+from flask import Flask, render_template, request, jsonify, send_file, Response
 
 from config import load_config
 from database import (init_db, get_posts, get_post_count, delete_post, get_tasks, delete_task,
@@ -198,11 +198,7 @@ def _remove_post_images(source_ids):
 
 @app.route("/")
 def index():
-    import os
-    cache_v = "r2-" + str(int(os.path.getmtime(os.path.join(os.path.dirname(__file__), "static", "app.js"))))
-    resp = make_response(render_template("index.html", cache_v=cache_v))
-    resp.headers["Cache-Control"] = "no-cache"
-    return resp
+    return render_template("index.html")
 
 @app.route("/images/<path:subpath>")
 def serve_image(subpath):
