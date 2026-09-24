@@ -4,6 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ACG黄油资源聚合爬取工具</title>
+    <script>
+    (function(){
+      function show(txt){
+        var d = document.getElementById('__errbar');
+        if(!d){ d = document.createElement('div'); d.id='__errbar';
+          d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#c00;color:#fff;font:13px monospace;padding:8px;white-space:pre-wrap;max-height:40%;overflow:auto;';
+          (document.body||document.documentElement).appendChild(d); }
+        d.textContent += txt + '\n';
+      }
+      window.addEventListener('error', function(e){
+        show('ERR: ' + e.message + ' @' + String(e.filename||'').slice(-16) + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function(e){
+        show('REJ: ' + e.reason);
+      });
+    })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@300;400&family=Geist:wght@300;400;500&family=Roboto+Mono:wght@400;500&family=Noto+Serif+SC:wght@300;400&display=swap">
