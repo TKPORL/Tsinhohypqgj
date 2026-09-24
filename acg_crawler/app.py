@@ -198,7 +198,9 @@ def _remove_post_images(source_ids):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    import os
+    cache_v = str(int(os.path.getmtime(os.path.join(os.path.dirname(__file__), "static", "app.js"))))
+    return render_template("index.html", cache_v=cache_v)
 
 @app.route("/images/<path:subpath>")
 def serve_image(subpath):
