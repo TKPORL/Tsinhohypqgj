@@ -199,7 +199,7 @@ def _remove_post_images(source_ids):
 @app.route("/")
 def index():
     import os
-    cache_v = str(int(os.path.getmtime(os.path.join(os.path.dirname(__file__), "static", "app.js"))))
+    cache_v = "r2-" + str(int(os.path.getmtime(os.path.join(os.path.dirname(__file__), "static", "app.js"))))
     resp = make_response(render_template("index.html", cache_v=cache_v))
     resp.headers["Cache-Control"] = "no-cache"
     return resp
