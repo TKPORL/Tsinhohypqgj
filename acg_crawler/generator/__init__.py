@@ -1,9 +1,12 @@
 """HTML生成器"""
+import html as html_lib
 import json
 import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+from database import sort_posts
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 IMAGES_DIR = Path(__file__).parent.parent / "images"
@@ -31,45 +34,283 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@300;400&family=Geist:wght@300;400;500&family=Roboto+Mono:wght@400;500&family=Noto+Serif+SC:wght@300;400&display=swap">
 <style>
+:root {{
+    --iris: #847dff;
+    --cyan: #00b3dd;
+    --pale-iris: #d1c9ff;
+    --deep-iris: #4b49aa;
+    --orchid: #dd90d8;
+    --obsidian: #0f1011;
+    --abyss: #090a0b;
+    --graphite: #2e2e2e;
+    --steel: #3f4041;
+    --fog: #6a6b6b;
+    --ash: #9f9fa0;
+    --cloud: #f5f5f7;
+    --pure: #ffffff;
+    --void: #000000;
+    --danger: #c0574e;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-accent: rgba(255, 255, 255, 0.2);
+    --hairline: rgba(255, 255, 255, 0.12);
+    --chip-bg: rgba(255, 255, 255, 0.12);
+    --chip-border: rgba(255, 255, 255, 0.15);
+    --font-display: 'Playfair Display', 'Noto Serif SC', Georgia, 'Songti SC', 'SimSun', serif;
+    --font-ui: 'Geist', 'Inter', 'Segoe UI', system-ui, 'Microsoft YaHei', sans-serif;
+    --font-mono: 'Roboto Mono', 'JetBrains Mono', Consolas, ui-monospace, monospace;
+    --radius-btn: 8px;
+    --radius-input: 8px;
+    --radius-card: 16px;
+    --radius-pill: 9999px;
+    --ease: 0.2s ease;
+}}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #0a0a0f; color: #e0e0e0; }}
-.header {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 24px; text-align: center; border-bottom: 1px solid #2a2a3e; }}
-.header h1 {{ font-size: 24px; color: #4fc3f7; margin-bottom: 8px; }}
-.header .meta {{ color: #888; font-size: 14px; }}
-.grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; padding: 24px; max-width: 1400px; margin: 0 auto; }}
-.card {{ background: #181825; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a3e; transition: transform 0.2s; }}
-.card:hover {{ transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.4); }}
-.card-imgs {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px; background: #0a0a0f; overflow: hidden; max-height: 250px; }}
-.card-imgs img {{ width: 100%; height: 100%; min-height: 110px; object-fit: cover; }}
-.card-imgs:has(img:nth-child(1):last-child) {{ grid-template-columns: 1fr; }}
-.no-img {{ display: flex; align-items: center; justify-content: center; height: 180px; color: #555; font-size: 14px; background: #181825; }}
-.card-body {{ padding: 16px; }}
-.card-title {{ font-size: 14px; font-weight: 500; line-height: 1.6; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }}
-.card-meta {{ display: flex; gap: 16px; font-size: 12px; color: #888; margin-bottom: 12px; }}
+body {{
+    background: var(--obsidian);
+    color: var(--cloud);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
+}}
+.header {{
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 32px 24px;
+    border-bottom: 1px solid var(--hairline);
+}}
+.header h1 {{
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: 38px;
+    line-height: 0.9;
+    color: var(--pure);
+}}
+.meta {{
+    margin-top: 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.182em;
+    text-transform: uppercase;
+    color: var(--fog);
+}}
+.grid {{
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+}}
+.card {{
+    background: var(--graphite);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: background var(--ease), border-color var(--ease);
+}}
+.card:hover {{ background: #333334; border-color: var(--border-accent); }}
+.card-imgs {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    max-height: 250px;
+}}
+.card-imgs img {{ width: 100%; height: 100%; min-height: 110px; object-fit: cover; display: block; background: var(--abyss); cursor: zoom-in; }}
+.card-imgs:has(img:nth-child(1):last-child) img {{ height: 280px; min-height: 280px; }}
+.no-img {{
+    height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--abyss);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.182em;
+    text-transform: uppercase;
+    color: var(--fog);
+}}
+.card-body {{ padding: 16px; display: flex; flex-direction: column; flex: 1; }}
+.card-title {{
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--pure);
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: opacity var(--ease);
+}}
+.card-title:hover {{ opacity: 0.75; }}
+.card-meta {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ash);
+}}
+.tag {{
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    background: var(--chip-bg);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-pill);
+    color: var(--cloud);
+}}
+.tag-android {{ color: var(--cloud); }}
+.tag-source {{ color: var(--ash); }}
 .card-links {{ display: flex; gap: 8px; flex-wrap: wrap; }}
-.link-btn {{ padding: 6px 14px; border-radius: 6px; font-size: 12px; text-decoration: none; color: #fff; }}
-.link-baidu {{ background: linear-gradient(135deg, #2196F3, #1565c0); }}
-.link-mobile {{ background: linear-gradient(135deg, #4CAF50, #2e7d32); }}
-.link-source {{ background: #1e1e2e; color: #e0e0e0; border: 1px solid #2a2a3e; }}
-.card-footer {{ padding: 10px 16px; background: rgba(0,0,0,0.25); font-size: 12px; color: #888; border-top: 1px solid #2a2a3e; }}
-.copy-text {{ cursor: pointer; padding: 2px 6px; background: rgba(79,195,247,0.1); border-radius: 3px; font-family: monospace; }}
-.copy-text:hover {{ background: rgba(79,195,247,0.2); }}
-.tag {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }}
-.tag-pc {{ background: rgba(79,195,247,0.15); color: #4fc3f7; }}
-.tag-android {{ background: rgba(102,187,106,0.15); color: #66bb6a; }}
-.tag-source {{ background: rgba(255,167,38,0.15); color: #ffa726; }}
-.lightbox-overlay {{ position: fixed; inset: 0; background: rgba(4,4,8,0.92); z-index: 2000; display: flex; align-items: center; justify-content: center; animation: lbFade 0.15s ease; }}
-@keyframes lbFade {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
-.lightbox-img {{ max-width: 88vw; max-height: 82vh; object-fit: contain; border-radius: 4px; box-shadow: 0 8px 48px rgba(0,0,0,0.6); cursor: zoom-out; user-select: none; }}
-.lightbox-close {{ position: absolute; top: 16px; right: 20px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #ddd; font-size: 22px; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; line-height: 1; display: flex; align-items: center; justify-content: center; }}
-.lightbox-close:hover {{ background: rgba(255,255,255,0.18); }}
-.lightbox-counter {{ position: absolute; top: 24px; left: 24px; color: #ccc; font-size: 14px; background: rgba(0,0,0,0.5); padding: 4px 12px; border-radius: 12px; }}
-.lightbox-nav {{ position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #ddd; font-size: 26px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }}
-.lightbox-nav:hover {{ background: rgba(255,255,255,0.18); }}
-.lightbox-prev {{ left: 20px; }}
-.lightbox-next {{ right: 20px; }}
-.card-imgs img {{ cursor: zoom-in; }}
+.link-btn {{
+    padding: 7px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-btn);
+    background: transparent;
+    color: var(--pure);
+    font-size: 12px;
+    text-decoration: none;
+    transition: background var(--ease), color var(--ease), border-color var(--ease);
+}}
+.link-btn:hover {{ background: var(--pure); color: var(--void); border-color: var(--pure); }}
+.link-source {{ border-color: var(--border); color: var(--ash); }}
+.card-footer {{
+    margin-top: auto;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid var(--border);
+}}
+.copy-text {{
+    cursor: pointer;
+    padding: 5px 12px;
+    background: var(--chip-bg);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-pill);
+    color: var(--pure);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: background var(--ease), border-color var(--ease);
+}}
+.copy-text::before {{ content: '⧉'; margin-right: 6px; opacity: 0.75; }}
+.copy-text:hover {{ background: rgba(255, 255, 255, 0.22); }}
+.copy-text:active {{ transform: translateY(1px); }}
+.copy-text.copied {{ background: rgba(0, 179, 221, 0.2); border-color: var(--cyan); }}
+.card-note {{
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    transition: border-color var(--ease), background var(--ease);
+}}
+.card-note:hover {{ border-color: var(--border-accent); }}
+.card-note.copied-note {{ border-color: var(--cyan); background: rgba(0, 179, 221, 0.06); }}
+.note-head {{
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.182em;
+    text-transform: uppercase;
+    color: var(--fog);
+    margin-bottom: 8px;
+}}
+.note-copy-hint {{ font-size: 10px; color: var(--fog); transition: color var(--ease); }}
+.card-note:hover .note-copy-hint {{ color: var(--cloud); }}
+.note-body {{
+    font-size: 12px;
+    line-height: 1.67;
+    color: var(--ash);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: hidden;
+    cursor: pointer;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}}
+.note-body:hover {{ color: var(--cloud); }}
+.note-body.expanded {{ -webkit-line-clamp: unset; display: block; }}
+.note-toggle {{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 2px 4px;
+    background: none;
+    border: 0;
+    border-radius: 4px;
+    color: var(--ash);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color var(--ease);
+}}
+.note-toggle:hover {{ color: var(--pure); }}
+.note-toggle:focus-visible {{ outline: 1px solid var(--pure); outline-offset: 2px; }}
+.note-arrow {{ display: inline-block; font-size: 10px; transition: transform 0.22s ease; }}
+.note-toggle[aria-expanded="true"] .note-arrow {{ transform: rotate(180deg); }}
+.note-toggle[hidden] {{ display: none; }}
+.lightbox-overlay {{
+    position: fixed;
+    inset: 0;
+    background: rgba(9, 10, 11, 0.95);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}}
+.lightbox-img {{ max-width: 92vw; max-height: 88vh; border-radius: var(--radius-btn); border: 1px solid var(--border); }}
+.lightbox-close, .lightbox-nav {{
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--radius-pill);
+    color: var(--pure);
+    cursor: pointer;
+    transition: background var(--ease);
+}}
+.lightbox-close {{ position: absolute; top: 24px; right: 24px; width: 40px; height: 40px; font-size: 18px; }}
+.lightbox-nav {{ position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; font-size: 18px; }}
+.lightbox-close:hover, .lightbox-nav:hover {{ background: rgba(255, 255, 255, 0.2); }}
+.lightbox-prev {{ left: 24px; }}
+.lightbox-next {{ right: 24px; }}
+.lightbox-counter {{
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--ash);
+}}
+@media (max-width: 640px) {{
+    .header {{ padding: 32px 16px 20px; }}
+    .header h1 {{ font-size: 26px; }}
+    .grid {{ padding: 16px; grid-template-columns: 1fr; }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+    * {{ transition: none !important; }}
+}}
 </style>
 </head>
 <body>
@@ -84,8 +325,25 @@ body {{ font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #
 function copyText(el) {{
     var text = el.dataset.copy || el.textContent;
     navigator.clipboard.writeText(text).then(function() {{
-        el.style.background = "rgba(102,187,106,0.3)";
-        setTimeout(function() {{ el.style.background = ""; }}, 500);
+        el.classList.add("copied");
+        var orig = el.textContent;
+        el.textContent = "已复制!";
+        setTimeout(function() {{ el.classList.remove("copied"); el.textContent = orig; }}, 900);
+    }});
+}}
+// 备注整块点击复制（复制完整备注，不是被折叠截断的那段）
+function copyNote(el) {{
+    var text = el.dataset.copy || el.textContent;
+    navigator.clipboard.writeText(text).then(function() {{
+        var box = el.closest(".card-note") || el;
+        box.classList.add("copied-note");
+        var hint = box.querySelector(".note-copy-hint");
+        var orig = hint ? hint.textContent : "";
+        if (hint) hint.textContent = "已复制!";
+        setTimeout(function() {{
+            box.classList.remove("copied-note");
+            if (hint) hint.textContent = orig;
+        }}, 900);
     }});
 }}
 function copyTitle(el) {{
@@ -94,6 +352,52 @@ function copyTitle(el) {{
         el.textContent = "已复制!";
         setTimeout(function() {{ el.textContent = orig; }}, 800);
     }});
+}}
+// 备注折叠：量目标态真实高度后做高度动画，收尾清掉内联高度
+function noteHeightWhen(body, expanded) {{
+    var was = body.classList.contains("expanded");
+    if (was !== expanded) body.classList.toggle("expanded", expanded);
+    var h = body.offsetHeight;
+    if (was !== expanded) body.classList.toggle("expanded", was);
+    return h;
+}}
+function toggleNote(btn) {{
+    var body = document.getElementById(btn.getAttribute("aria-controls"));
+    if (!body) return;
+    var next = btn.getAttribute("aria-expanded") !== "true";
+    var start = body.offsetHeight;
+    var target = noteHeightWhen(body, next);
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    body.style.transition = "none";
+    body.style.maxHeight = start + "px";
+    void body.offsetHeight;
+    body.style.transition = reduce ? "none" : "max-height 0.22s ease";
+    body.classList.toggle("expanded", next);
+    body.style.maxHeight = target + "px";
+    btn.setAttribute("aria-expanded", next ? "true" : "false");
+    btn.setAttribute("aria-label", next ? "收起备注" : "展开备注");
+    var t = btn.querySelector(".note-toggle-text");
+    if (t) t.textContent = next ? "收起" : "展开";
+    setTimeout(function() {{
+        body.style.maxHeight = "";
+        body.style.transition = "";
+    }}, reduce ? 0 : 240);
+}}
+// 文字没超过折叠行数时不显示按钮
+function initNotes() {{
+    document.querySelectorAll(".card-note").forEach(function(box) {{
+        var body = box.querySelector(".note-body");
+        var btn = box.querySelector(".note-toggle");
+        if (!body || !btn) return;
+        var full = noteHeightWhen(body, true);
+        var clamped = noteHeightWhen(body, false);
+        btn.hidden = (full - clamped) <= 2;
+    }});
+}}
+if (document.readyState === "loading") {{
+    document.addEventListener("DOMContentLoaded", initNotes);
+}} else {{
+    initNotes();
 }}
 var lbState = {{ imgs: [], idx: 0, overlay: null }};
 function openLightbox(sources, start) {{
@@ -175,11 +479,12 @@ CARD_TEMPLATE = """
 <span>{platform_tag}</span>
 <span class="tag tag-source">{source}</span>
 <span>{date}</span>
-<span>❤ {likes}</span>
+<span><span style="color:var(--fog)">LIKE</span> {likes}</span>
 </div>
 <div class="card-links">
 {links}
 </div>
+{note}
 </div>
 {footer}
 </div>"""
@@ -222,14 +527,49 @@ def generate_html(posts, title, filename):
         }
         platform_tag = platform_tags.get(platform, platform_tags["unknown"])
 
-        # 链接
+        # 链接：优先用 download_items_json 多链接渲染，单网盘回退兼容字段
         links = []
-        if post.get("baidu_link"):
-            code = post.get("baidu_code", "")
-            links.append(f'<a href="{post["baidu_link"]}" class="link-btn link-baidu" target="_blank">百度网盘{(" ("+code+")") if code else ""}</a>')
-        if post.get("mobile_link"):
-            code = post.get("mobile_code", "")
-            links.append(f'<a href="{post["mobile_link"]}" class="link-btn link-mobile" target="_blank">移动云盘{(" ("+code+")") if code else ""}</a>')
+        items = []
+        raw_items = post.get("download_items_json")
+        if raw_items:
+            try:
+                items = json.loads(raw_items) if isinstance(raw_items, str) else raw_items
+            except Exception:
+                items = []
+
+        def _label_for(plat):
+            return "PC" if plat == "pc" else ("安卓" if plat == "android" else "")
+
+        def _code_suffix(code):
+            return f" ({code})" if code else ""
+
+        if items:
+            # 按平台归类，单个网盘最多输出 2 个按钮
+            for provider, label_zh in (("baidu", "百度网盘"), ("mobile", "移动云盘")):
+                plats = [it for it in items if it.get("provider") == provider]
+                if not plats:
+                    continue
+                seen_plats = set()
+                for it in plats:
+                    plat = it.get("platform") or "unknown"
+                    if plat in seen_plats:
+                        continue
+                    seen_plats.add(plat)
+                    suffix = _label_for(plat)
+                    cls = "link-baidu" if provider == "baidu" else "link-mobile"
+                    text = f"{label_zh}{suffix}" if suffix else label_zh
+                    links.append(
+                        f'<a href="{it.get("url", "#")}" class="link-btn {cls}" target="_blank">'
+                        f'{text}{_code_suffix(it.get("code"))}</a>'
+                    )
+        else:
+            # 兼容老数据：按 baidu_link / mobile_link 单条渲染
+            if post.get("baidu_link"):
+                code = post.get("baidu_code", "")
+                links.append(f'<a href="{post["baidu_link"]}" class="link-btn link-baidu" target="_blank">百度网盘{(" ("+code+")") if code else ""}</a>')
+            if post.get("mobile_link"):
+                code = post.get("mobile_code", "")
+                links.append(f'<a href="{post["mobile_link"]}" class="link-btn link-mobile" target="_blank">移动云盘{(" ("+code+")") if code else ""}</a>')
         links.append(f'<a href="{post.get("source_url", "#")}" class="link-btn link-source" target="_blank">原帖</a>')
         links_html = "\n".join(links)
 
@@ -237,11 +577,36 @@ def generate_html(posts, title, filename):
         footer = ""
         parts = []
         if post.get("unzip_code"):
-            parts.append(f'<button class="copy-text" data-copy="解压码：{post["unzip_code"]}" onclick="copyText(this)">解压码</button>')
+            _uc = html_lib.escape(str(post["unzip_code"]), quote=True)
+            parts.append(f'<button class="copy-text" data-copy="解压码：{_uc}" title="解压码：{_uc}" onclick="copyText(this)">解压码</button>')
         if post.get("cheat_code"):
-            parts.append(f'<button class="copy-text" data-copy="作弊码：{post["cheat_code"]}" onclick="copyText(this)">作弊码</button>')
+            _cc = html_lib.escape(str(post["cheat_code"]), quote=True)
+            parts.append(f'<button class="copy-text" data-copy="作弊码：{_cc}" title="作弊码：{_cc}" onclick="copyText(this)">作弊码</button>')
         if parts:
             footer = f'<div class="card-footer">{"&nbsp;&nbsp;".join(parts)}</div>'
+
+        # 备注（发布者说明）：折叠 3 行，超出才给展开按钮；整块点击复制
+        # 仅鲲Galgame 需要（用户为主的站点才有发布者备注）；其余四站为管理员整理站，
+        # 其 content 是游戏简介，不属于备注，卡片不展示（2026-09-23 用户确认恢复）
+        note_html = ""
+        note_text = (post.get("content") or "").strip()
+        if note_text and post.get("source") == "鲲Galgame":
+            shown = note_text[:2000] + "……" if len(note_text) > 2000 else note_text
+            # 复制内容 = 完整备注（含"网盘大小"行，用户 2026-09-23 起要求带上）
+            copy_text = note_text.strip()
+            note_id = f"note-{post.get('id', 'x')}"
+            note_html = (
+                '<div class="card-note">'
+                '<div class="note-head"><span>备注</span><span class="note-copy-hint">点击复制</span></div>'
+                f'<div class="note-body" id="{note_id}" data-copy="{html_lib.escape(copy_text, quote=True)}" '
+                f'title="点击复制备注" onclick="copyNote(this)">{html_lib.escape(shown)}</div>'
+                f'<button class="note-toggle" type="button" aria-expanded="false" '
+                f'aria-controls="{note_id}" aria-label="展开备注" onclick="toggleNote(this)">'
+                '<span class="note-toggle-text">展开</span>'
+                '<span class="note-arrow" aria-hidden="true">▾</span>'
+                '</button>'
+                '</div>'
+            )
 
         card = CARD_TEMPLATE.format(
             images_html=imgs_html,
@@ -251,6 +616,7 @@ def generate_html(posts, title, filename):
             date=post.get("post_date", ""),
             likes=post.get("likes", 0),
             links=links_html,
+            note=note_html,
             footer=footer,
         )
         cards_html += card + "\n"
@@ -266,20 +632,56 @@ def generate_html(posts, title, filename):
     filepath.write_text(html, encoding="utf-8")
     return str(filepath)
 
-def export_posts(posts):
-    """导出帖子为HTML，android归入pc_android，打包zip含图片"""
-    pc_posts = [p for p in posts if p.get("platform") == "pc"]
-    # android全部归入pc_android
-    mixed_posts = [p for p in posts if p.get("platform") in ("pc_android", "android")]
+def export_posts_filtered(posts, source="all"):
+    """按筛选条件导出帖子为单个zip（含所有平台）。
 
-    pc_file = generate_html(pc_posts, "ACG游戏资源 - PC下载", "PC下载.html")
-    mixed_file = generate_html(mixed_posts, "ACG游戏资源 - PC+安卓下载", "PC+安卓下载.html")
+    用于"导出当前筛选"按钮：用户在结果页按来源/平台/搜索条件筛选后，
+    一键导出所有匹配帖子（不分平台），生成单个zip文件。
+    """
+    posts = sort_posts(posts)
+    tag = source if source and source != "all" else "全部来源"
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    base = f"筛选导出-{tag}-{ts}"
+    title = f"ACG游戏资源 - {tag}筛选结果"
+    html_file = generate_html(posts, title, f"{base}.html")
+    zip_file = _zip_output(html_file, base)
+    _cleanup_old_exports(keep=10)
+    return {"filtered": zip_file}
 
-    # 打包为zip（HTML + images目录）
-    pc_zip = _zip_output(pc_file, "PC下载")
-    mixed_zip = _zip_output(mixed_file, "PC+安卓下载")
 
-    return {"pc": pc_zip, "mixed": mixed_zip, "android": ""}
+def export_posts(posts, name_suffix=""):
+    """导出为三个 zip：PC / PC+安卓 / 安卓。
+
+    2026-09-23 起单安卓（platform='android'）不再并入 PC+安卓，三类互不重叠；
+    unknown 归入 PC。某类无数据则该 zip 为 None（前端可据此禁用按钮）。
+    """
+    posts = sort_posts(posts)
+    pc_posts = [p for p in posts if p.get("platform") in ("pc", "unknown")]
+    pc_android_posts = [p for p in posts if p.get("platform") == "pc_android"]
+    android_posts = [p for p in posts if p.get("platform") == "android"]
+
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    def _base(prefix):
+        return f"{prefix}-{name_suffix}-{ts}" if name_suffix else f"{prefix}-{ts}"
+
+    result = {}
+    for key, title, group in (
+        ("pc", "PC下载", pc_posts),
+        ("pc_android", "PC+安卓下载", pc_android_posts),
+        ("android", "安卓下载", android_posts),
+    ):
+        if not group:
+            result[key] = ""
+            continue
+        base = _base(title)
+        html_file = generate_html(group, f"ACG游戏资源 - {title}", f"{base}.html")
+        result[key] = _zip_output(html_file, base)
+
+    # 三个zip都完成后再清理旧导出，避免清理误删本次刚生成的临时目录
+    _cleanup_old_exports(keep=10)
+    result["mixed"] = result.get("pc_android") or ""   # 兼容旧前端/脚本
+    return result
 
 
 def _zip_output(html_path, zip_name):
@@ -302,3 +704,31 @@ def _zip_output(html_path, zip_name):
                     zf.write(str(img_file), arcname)
 
     return str(zip_path)
+
+
+def _cleanup_old_exports(keep=10):
+    """output/ 只保留最近 keep 个zip及其同名临时目录，其余删除。
+
+    每次导出都会生成新时间戳文件，不清理会无限膨胀。
+    删除失败（文件被占用等）仅跳过，不影响导出。
+    """
+    import shutil as _sh
+    try:
+        zips = sorted(
+            (f for f in OUTPUT_DIR.glob("*.zip") if f.is_file()),
+            key=lambda p: p.stat().st_mtime, reverse=True)
+        for old_zip in zips[keep:]:
+            try:
+                old_zip.unlink()
+            except Exception:
+                pass
+        # 与保留zip同名的临时目录保留，其余删除
+        keep_stems = {p.stem for p in zips[:keep]}
+        for d in OUTPUT_DIR.iterdir():
+            if d.is_dir() and d.stem not in keep_stems:
+                try:
+                    _sh.rmtree(d)
+                except Exception:
+                    pass
+    except Exception:
+        pass  # 清理失败不影响导出主流程

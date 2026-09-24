@@ -12,25 +12,36 @@ document.addEventListener("DOMContentLoaded", function() {
             if (this.dataset.panel === "result") loadPosts();
             if (this.dataset.panel === "history") loadHistory();
             if (this.dataset.panel === "export") loadExportInfo();
+            if (this.dataset.panel === "cleanup") loadCleanupInfo();
         });
     });
 
     // 爬取模式切换
     const modeRadios = document.querySelectorAll('input[name="crawlMode"]');
     const dateGroup = document.getElementById("dateGroup");
-    const pageGroup = document.getElementById("pageGroup");
+    const targetSites = document.getElementById("targetSites");
+    const siteHelp = document.getElementById("siteHelp");
     const incrementalGroup = document.getElementById("incrementalGroup");
+    const dedupGroup = document.getElementById("dedupGroup");
+    const SITE_HELP_BY_PAGE = "勾选哪个站点就爬哪个，页码范围只对勾选的站点生效。各站更新速度不同，把更新慢的站点结束页调小，就不会翻到旧内容。";
+    const SITE_HELP_NO_PAGE = "当前模式下页码设置不生效，只需勾选要爬的站点。";
     modeRadios.forEach(radio => {
         radio.addEventListener("change", function() {
             dateGroup.classList.add("hidden");
-            pageGroup.classList.add("hidden");
             incrementalGroup.classList.add("hidden");
+            targetSites.classList.add("pages-hidden");
+            // 去重开关只对按页码/按日期生效，增量模式自带去重
+            dedupGroup.classList.remove("hidden");
             if (this.value === "by_date") {
                 dateGroup.classList.remove("hidden");
+                siteHelp.textContent = SITE_HELP_NO_PAGE;
             } else if (this.value === "by_page") {
-                pageGroup.classList.remove("hidden");
+                targetSites.classList.remove("pages-hidden");
+                siteHelp.textContent = SITE_HELP_BY_PAGE;
             } else if (this.value === "incremental") {
                 incrementalGroup.classList.remove("hidden");
+                dedupGroup.classList.add("hidden");
+                siteHelp.textContent = SITE_HELP_NO_PAGE;
             }
         });
     });
@@ -38,6 +49,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // 开始爬取
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
+    var userStopped = false;
     const progressSection = document.getElementById("progressSection");
     const progressFill = document.getElementById("progressFill");
     const progressText = document.getElementById("progressText");
@@ -51,7 +63,8 @@ document.addEventListener("DOMContentLoaded", function() {
         acgyxj: "ACG游戏姬",
         acgrx: "萌幻ACG",
         acgll: "ACG图书馆",
-        acgjlb: "ACG俱乐部"
+        acgjlb: "ACG俱乐部",
+        kungal: "鲲Galgame"
     };
     const STATUS_LABELS = {
         waiting: "等待中",
@@ -114,11 +127,25 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    startBtn.addEventListener("click", function() {
-        const sites = [];
-        document.querySelectorAll('.checkbox-group input:checked').forEach(cb => {
-            sites.push(cb.value);
+    // 读取「目标站点」区：每个勾选站点带上它自己那一行的页码范围
+    function collectSitePages() {
+        const sitePages = {};
+        document.querySelectorAll("#targetSites .site-page-row").forEach(function(row) {
+            const cb = row.querySelector('input[type="checkbox"]');
+            if (!cb || !cb.checked) return;
+            let start = parseInt(row.querySelector(".site-start").value, 10);
+            let end = parseInt(row.querySelector(".site-end").value, 10);
+            if (!(start >= 1)) start = 1;
+            if (!(end >= 1)) end = 1;
+            if (end < start) end = start;   // 结束页早于起始页时按起始页处理
+            sitePages[cb.value] = {start: start, end: end};
         });
+        return sitePages;
+    }
+
+    startBtn.addEventListener("click", function() {
+        const sitePages = collectSitePages();
+        const sites = Object.keys(sitePages);
         if (sites.length === 0) {
             alert("请至少选择一个站点");
             return;
@@ -126,12 +153,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
         const mode = document.querySelector('input[name="crawlMode"]:checked').value;
         const speed = document.querySelector('input[name="speedMode"]:checked').value || "balanced";
-        const body = { mode: mode, sites: sites, speed: speed };
+        const body = { mode: mode, sites: sites, site_pages: sitePages, speed: speed };
+        if (mode !== "incremental") {
+            body.skip_existing = document.getElementById("skipExisting").checked;
+        }
 
-        if (mode === "by_page") {
-            body.start_page = parseInt(document.getElementById("startPage").value) || 1;
-            body.end_page = parseInt(document.getElementById("endPage").value) || 10;
-        } else {
+        if (mode === "by_date") {
             body.start_date = document.getElementById("startDate").value;
             body.end_date = document.getElementById("endDate").value;
         }
@@ -159,12 +186,19 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     stopBtn.addEventListener("click", function() {
-        fetch("/api/stop_crawl", {method: "POST"});
-        clearInterval(pollTimer);
-        startBtn.classList.remove("hidden");
-        stopBtn.classList.add("hidden");
+        var choice = confirm(
+            "确定：保留本次已爬数据并停止爬取\n取消：继续爬取"
+        );
+        if (!choice) return;  // 取消 = 什么都不做，继续爬
+        fetch("/api/confirm_cancel", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({discard: false})
+        });
+        userStopped = true;
         statusDot.classList.remove("running");
-        statusText.textContent = "已停止";
+        statusText.textContent = "正在停止...";
+        stopBtn.classList.add("hidden");
     });
 
     function pollProgress() {
@@ -202,8 +236,9 @@ document.addEventListener("DOMContentLoaded", function() {
                         startBtn.classList.remove("hidden");
                         stopBtn.classList.add("hidden");
                         statusDot.classList.remove("running");
-                        statusText.textContent = "完成";
-                        // 爬取完成自动跳转到结果页
+                        statusText.textContent = userStopped ? "已停止" : "完成";
+                        userStopped = false;
+                        // 自动跳转到结果页
                         setTimeout(function() {
                             document.querySelectorAll(".nav-btn").forEach(function(b) { b.classList.remove("active"); });
                             document.querySelectorAll(".panel").forEach(function(p) { p.classList.remove("active"); });
@@ -218,22 +253,74 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // ========== 结果面板 - 分组 + 多选 + 批量操作 ==========
     const selectedIds = new Set();
+    const PAGE_SIZE = 60;
+    var currentOffset = 0;
+    var currentTotal = 0;
+    var currentBatch = 0;  // 非0时只看该批次数据（从历史记录跳转）
 
-    function loadPosts() {
+    function loadPosts(resetToFirst) {
+        if (resetToFirst !== false) currentOffset = 0;
         selectedIds.clear();
         updateBatchBar();
         var source = document.getElementById("filterSource").value;
+        var keyword = document.getElementById("searchInput").value.trim();
         var platTab = document.querySelector(".plat-tab.active");
         var platform = platTab ? platTab.dataset.plat : "all";
-        fetch("/api/posts_grouped?source=" + source + "&platform=" + platform)
+        fetch("/api/posts_grouped?source=" + encodeURIComponent(source)
+            + "&platform=" + platform
+            + "&q=" + encodeURIComponent(keyword)
+            + (currentBatch ? "&batch=" + currentBatch : "")
+            + "&limit=" + PAGE_SIZE + "&offset=" + currentOffset)
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                var totalPosts = 0;
-                data.groups.forEach(function(g) { totalPosts += g.total; });
-                document.getElementById("resultCount").textContent = totalPosts;
+                currentTotal = data.total || 0;
+                document.getElementById("resultCount").textContent = currentTotal;
                 renderGroups(data.groups);
+                renderPager();
             });
     }
+
+    function renderPager() {
+        var pager = document.getElementById("resultPager");
+        if (!pager) return;
+        if (currentTotal <= PAGE_SIZE) { pager.innerHTML = ""; return; }
+        var page = Math.floor(currentOffset / PAGE_SIZE) + 1;
+        var totalPages = Math.ceil(currentTotal / PAGE_SIZE);
+        var html = "";
+        if (page > 1) {
+            html += '<button class="btn btn-sm" onclick="gotoPage(' + (page - 1) + ')">上一页</button> ';
+        }
+        var start = Math.max(1, page - 3);
+        var end = Math.min(totalPages, start + 6);
+        if (start > 1) html += '<button class="btn btn-sm" onclick="gotoPage(1)">1</button> ';
+        if (start > 2) html += '<span class="pager-ellipsis">…</span> ';
+        for (var i = start; i <= end; i++) {
+            if (i === page) {
+                html += '<button class="btn btn-sm btn-primary">' + i + '</button> ';
+            } else {
+                html += '<button class="btn btn-sm" onclick="gotoPage(' + i + ')">' + i + '</button> ';
+            }
+        }
+        if (end < totalPages - 1) html += '<span class="pager-ellipsis">…</span> ';
+        if (end < totalPages) html += '<button class="btn btn-sm" onclick="gotoPage(' + totalPages + ')">' + totalPages + '</button> ';
+        if (page < totalPages) {
+            html += '<button class="btn btn-sm" onclick="gotoPage(' + (page + 1) + ')">下一页</button>';
+        }
+        pager.innerHTML = '<span class="pager-info">第 ' + page + ' / ' + totalPages + ' 页</span> ' + html;
+    }
+
+    window.gotoPage = function(p) {
+        currentOffset = (p - 1) * PAGE_SIZE;
+        loadPosts(false);
+        document.getElementById("panel-result").scrollIntoView({behavior: "smooth"});
+    };
+
+    // 搜索：300ms防抖
+    var searchTimer = null;
+    document.getElementById("searchInput").addEventListener("input", function() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function() { loadPosts(true); }, 300);
+    });
 
     document.getElementById("filterSource").addEventListener("change", loadPosts);
 
@@ -243,7 +330,10 @@ document.addEventListener("DOMContentLoaded", function() {
         loadPosts();
     };
 
+    var currentGroups = [];
+
     function renderGroups(groups) {
+        currentGroups = groups;
         const container = document.getElementById("groupedResults");
         container.innerHTML = "";
         const stickyBtns = document.getElementById("stickyBtns");
@@ -273,10 +363,23 @@ document.addEventListener("DOMContentLoaded", function() {
             groupEl.className = "date-group";
             groupEl.id = "group-" + idx;
 
+            // 该分组涉及哪些来源站（同一平台分组可能含多站数据）
+            var sourcesInGroup = [];
+            var sourceSeen = {};
+            group.posts.forEach(function(p) {
+                if (!sourceSeen[p.source]) { sourceSeen[p.source] = true; sourcesInGroup.push(p.source); }
+            });
+            var sourceLabel = sourcesInGroup.join(' / ');
+
             const headerEl = document.createElement("div");
             headerEl.className = "date-group-header";
-            headerEl.innerHTML = '<span class="date-label">' + group.label + '</span><span class="date-count">' + group.total + ' 条</span><button class="btn btn-sm toggle-btn" onclick="toggleGroup(' + idx + ')">展开</button>';
+            headerEl.dataset.plat = group.label === "PC" ? "pc" : (group.label === "安卓" ? "android" : (group.label === "PC+安卓" ? "pc_android" : "other"));
+            headerEl.innerHTML = '<div class="group-title-wrap"><span class="date-label">' + group.label + '</span><span class="group-source">' + sourceLabel + '</span></div>'
+                + '<span class="date-count">' + group.total + ' 条</span>'
+                + '<div class="group-actions"><button class="btn btn-sm btn-primary" onclick="downloadGroup(' + idx + ', this)" title="只导出这个分组的数据">下载本组</button>'
+                + '<button class="btn btn-sm toggle-btn" onclick="toggleGroup(' + idx + ')">展开</button></div>';
             groupEl.appendChild(headerEl);
+            groupEl.dataset.sources = sourcesInGroup.join(',');
 
             const gridEl = document.createElement("div");
             gridEl.className = "card-grid group-cards";
@@ -300,6 +403,118 @@ document.addEventListener("DOMContentLoaded", function() {
             if (btn) btn.classList.add("active");
         }
     };
+
+    // 下载本分组：按当前筛选（来源选择器不影响分组内站名，用组内实际来源）
+    window.downloadGroup = function(idx, btnEl) {
+        var groupEl = document.getElementById("group-" + idx);
+        if (!groupEl) return;
+        var group = currentGroups[idx];
+        if (!group) return;
+        var platTab = document.querySelector(".plat-tab.active");
+        var platform = platTab ? platTab.dataset.plat : "all";
+        var keyword = document.getElementById("searchInput").value.trim();
+        var source = document.getElementById("filterSource").value;
+        var type = group.platform === "PC" ? "pc" : (group.platform === "安卓" ? "android" : "mixed");
+        if (btnEl) { btnEl.disabled = true; btnEl.textContent = "导出中..."; }
+        fetch("/api/export_download?type=" + type
+            + "&source=" + encodeURIComponent(source)
+            + "&platform=" + encodeURIComponent(platform)
+            + "&q=" + encodeURIComponent(keyword))
+            .then(function(r) {
+                if (!r.ok) throw new Error("导出失败");
+                return r.blob();
+            })
+            .then(function(blob) {
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(function(e) { alert("导出失败: " + e.message); })
+            .finally(function() {
+                if (btnEl) { btnEl.disabled = false; btnEl.textContent = "下载本组"; }
+            });
+    };
+
+    // 备注文本转义（发布者备注常含 < > & 等字符，不能直接塞进 HTML）
+    function escapeHtml(str) {
+        return String(str == null ? "" : str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    // 备注折叠：量目标态的真实高度（不用猜的固定值），供高度动画使用
+    function noteHeightWhen(body, expanded) {
+        var was = body.classList.contains("expanded");
+        if (was !== expanded) body.classList.toggle("expanded", expanded);
+        var h = body.offsetHeight;
+        if (was !== expanded) body.classList.toggle("expanded", was);
+        return h;
+    }
+
+    // 展开/收起：容器高度随文字实际高度变化，箭头同步旋转，键盘可触发
+    window.toggleNote = function(btn) {
+        var body = document.getElementById(btn.getAttribute("aria-controls"));
+        if (!body) return;
+        var next = btn.getAttribute("aria-expanded") !== "true";
+        var start = body.offsetHeight;
+        var target = noteHeightWhen(body, next);
+        var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        body.style.transition = "none";
+        body.style.maxHeight = start + "px";
+        void body.offsetHeight;                 // 强制重排，让起始高度先生效
+        body.style.transition = reduce ? "none" : "max-height 0.22s ease";
+        body.classList.toggle("expanded", next);
+        body.style.maxHeight = target + "px";
+
+        btn.setAttribute("aria-expanded", next ? "true" : "false");
+        btn.setAttribute("aria-label", next ? "收起备注" : "展开备注");
+        var textEl = btn.querySelector(".note-toggle-text");
+        if (textEl) textEl.textContent = next ? "收起" : "展开";
+
+        window.setTimeout(function() {
+            // 收尾后清掉内联高度，保证高度与真实文字高度一致
+            body.style.maxHeight = "";
+            body.style.transition = "";
+        }, reduce ? 0 : 240);
+    };
+
+    // 文字没超过折叠行数时不显示按钮（避免"点了没变化"）
+    // 卡片初始在折叠的分组里，量到的高度是 0，所以等它真正可见时再量
+    var noteObserver = null;
+    function measureNote(body) {
+        var box = body.closest(".card-note");
+        var btn = box && box.querySelector(".note-toggle");
+        if (!btn) return;
+        var full = noteHeightWhen(body, true);
+        var clamped = noteHeightWhen(body, false);
+        if (clamped <= 0) return;      // 不可见时不判断，保持按钮可用
+        btn.hidden = (full - clamped) <= 2;
+    }
+
+    function setupNote(card) {
+        var body = card.querySelector(".note-body");
+        var btn = card.querySelector(".note-toggle");
+        if (!body || !btn) return;
+        if (!window.IntersectionObserver) return;   // 老浏览器保持按钮可用
+        if (!noteObserver) {
+            noteObserver = new IntersectionObserver(function(entries) {
+                entries.forEach(function(en) {
+                    if (!en.isIntersecting) return;
+                    measureNote(en.target);
+                    noteObserver.unobserve(en.target);
+                });
+            }, { threshold: 0.01 });
+        }
+        noteObserver.observe(body);
+    }
 
     function createCard(post) {
         const card = document.createElement("div");
@@ -336,11 +551,36 @@ document.addEventListener("DOMContentLoaded", function() {
         var dualTag = hasDual ? '<span class="tag tag-dual">双网盘</span>' : '';
 
         var linksHtml = "";
-        if (post.baidu_link) {
-            linksHtml += '<a href="' + post.baidu_link + '" class="link-btn link-baidu" target="_blank">百度网盘' + (post.baidu_code ? ' ('+post.baidu_code+')' : '') + '</a>';
+        // 多链接渲染：优先 download_items_json（按平台分别按钮）
+        var items = [];
+        if (post.download_items_json) {
+            try { items = JSON.parse(post.download_items_json) || []; } catch(e) { items = []; }
         }
-        if (post.mobile_link) {
-            linksHtml += '<a href="' + post.mobile_link + '" class="link-btn link-mobile" target="_blank">移动云盘' + (post.mobile_code ? ' ('+post.mobile_code+')' : '') + '</a>';
+        function labelFor(p) { return p === "pc" ? "PC" : (p === "android" ? "安卓" : ""); }
+        function codeSuffix(c) { return c ? " (" + c + ")" : ""; }
+        if (items && items.length) {
+            ["baidu", "mobile"].forEach(function(provider) {
+                var plats = items.filter(function(it){ return it.provider === provider; });
+                if (!plats.length) return;
+                var seen = {};
+                plats.forEach(function(it) {
+                    var p = it.platform || "unknown";
+                    if (seen[p]) return;
+                    seen[p] = true;
+                    var suffix = labelFor(p);
+                    var cls = provider === "baidu" ? "link-baidu" : "link-mobile";
+                    var text = (provider === "baidu" ? "百度网盘" : "移动云盘") + (suffix ? suffix : "");
+                    linksHtml += '<a href="' + it.url + '" class="link-btn ' + cls + '" target="_blank">' + text + codeSuffix(it.code) + '</a>';
+                });
+            });
+        } else {
+            // 兼容老数据
+            if (post.baidu_link) {
+                linksHtml += '<a href="' + post.baidu_link + '" class="link-btn link-baidu" target="_blank">百度网盘' + (post.baidu_code ? ' ('+post.baidu_code+')' : '') + '</a>';
+            }
+            if (post.mobile_link) {
+                linksHtml += '<a href="' + post.mobile_link + '" class="link-btn link-mobile" target="_blank">移动云盘' + (post.mobile_code ? ' ('+post.mobile_code+')' : '') + '</a>';
+            }
         }
         linksHtml += '<a href="' + post.source_url + '" class="link-btn link-source" target="_blank">原帖</a>';
 
@@ -348,19 +588,39 @@ document.addEventListener("DOMContentLoaded", function() {
         if (post.unzip_code || post.cheat_code) {
             footerHtml = '<div class="card-footer"><div class="footer-left">';
             if (post.unzip_code) {
-                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="解压码：' + post.unzip_code + '" onclick="copyText(this)">解压码</button>';
+                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="解压码：' + escapeHtml(post.unzip_code) + '" title="解压码：' + escapeHtml(post.unzip_code) + '" onclick="copyText(this)">解压码</button>';
             }
             if (post.cheat_code) {
-                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="作弊码：' + post.cheat_code + '" onclick="copyText(this)">作弊码</button>';
+                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="作弊码：' + escapeHtml(post.cheat_code) + '" title="作弊码：' + escapeHtml(post.cheat_code) + '" onclick="copyText(this)">作弊码</button>';
             }
             footerHtml += '</div></div>';
         }
 
+        // 备注（发布者说明）：折叠 3 行，超出才给展开按钮；整块可点击复制
+        // 仅鲲Galgame 需要；其余四站是管理员整理站，content 为游戏简介，不算备注（2026-09-23 用户确认）
+        var noteHtml = "";
+        var noteText = (post.content || "").trim();
+        if (noteText && post.source === "鲲Galgame") {
+            var noteShown = noteText.length > 2000 ? noteText.slice(0, 2000) + "……" : noteText;
+            var noteId = "note-" + post.id;
+            noteHtml = '<div class="card-note">' +
+                '<div class="note-head"><span>备注</span><span class="note-copy-hint">点击复制</span></div>' +
+                '<div class="note-body" id="' + noteId + '" data-copy="' + escapeHtml(noteText) + '"' +
+                ' title="点击复制备注" onclick="copyNote(this)">' + escapeHtml(noteShown) + '</div>' +
+                '<button class="note-toggle" type="button" aria-expanded="false" aria-controls="' + noteId + '" aria-label="展开备注" onclick="toggleNote(this)">' +
+                '<span class="note-toggle-text">展开</span>' +
+                '<span class="note-arrow" aria-hidden="true">▾</span>' +
+                '</button>' +
+                '</div>';
+        }
+
         var displayTitle = post.title.replace(/【([^】]*)\/([^】]*)】/g, '【$1 $2】');
 
-        var statsHtml = '<div class="card-stats"><span class="stat-item">❤ ' + (post.likes || 0) + '</span></div>';
+        var statsHtml = '<div class="card-stats"><span class="stat-item"><span class="stat-key">LIKE</span>' + (post.likes || 0) + '</span></div>';
 
-        card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images">' + imgsHtml + '</div><div class="card-body"><div class="card-title" onclick="copyTitle(this)" title="点击复制标题">' + displayTitle + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div></div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
+        card.innerHTML = '<div class="card-header"><div class="card-select"><input type="checkbox" data-id="' + post.id + '" onchange="toggleSelect(this)"></div><div class="card-tags">' + platformTag + dualTag + '<span class="tag tag-source">' + post.source + '</span></div><span class="tag tag-date">' + (post.post_date || '') + '</span></div><div class="card-images">' + imgsHtml + '</div><div class="card-body"><div class="card-title" onclick="copyTitle(this)" title="点击复制标题">' + displayTitle + '</div>' + statsHtml + '<div class="card-links">' + linksHtml + '</div>' + noteHtml + '</div>' + footerHtml + '<div class="card-actions"><button class="btn btn-sm" onclick="downloadPost(' + post.id + ', this)" title="只导出这一条帖子">下载</button><button class="btn btn-sm btn-danger" onclick="deletePost(' + post.id + ')">删除</button></div>';
+        // 入 DOM 后再量高度，决定要不要显示展开按钮
+        window.requestAnimationFrame(function() { setupNote(card); });
         return card;
     }
 
@@ -395,6 +655,29 @@ document.addEventListener("DOMContentLoaded", function() {
         updateBatchBar();
     };
 
+    // 下载单条：只导出这一条帖子为zip
+    window.downloadPost = function(id, btnEl) {
+        if (btnEl) { btnEl.disabled = true; btnEl.textContent = "导出中..."; }
+        fetch("/api/export_download?type=selected&ids=" + id)
+            .then(function(r) {
+                if (!r.ok) throw new Error("导出失败");
+                return r.blob();
+            })
+            .then(function(blob) {
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(function(e) { alert("导出失败: " + e.message); })
+            .finally(function() {
+                if (btnEl) { btnEl.disabled = false; btnEl.textContent = "下载"; }
+            });
+    };
+
     // 删除帖子
     window.deletePost = function(id) {
         if (!confirm("确定删除这条记录？")) return;
@@ -426,6 +709,37 @@ document.addEventListener("DOMContentLoaded", function() {
         window.location.href = "/api/export_download?type=selected&ids=" + ids;
     });
 
+    // 导出当前筛选：按结果页的来源/平台/搜索条件导出全部匹配帖子
+    document.getElementById("exportFilteredBtn").addEventListener("click", function() {
+        var source = document.getElementById("filterSource").value;
+        var keyword = document.getElementById("searchInput").value.trim();
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = "导出中...";
+        // filtered 类型：后端一次性拉取所有匹配帖子，生成单个zip
+        fetch("/api/export_download?type=filtered"
+            + "&source=" + encodeURIComponent(source)
+            + "&q=" + encodeURIComponent(keyword))
+            .then(function(r) {
+                if (!r.ok) throw new Error("导出失败");
+                return r.blob();
+            })
+            .then(function(blob) {
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(function(e) { alert("导出失败: " + e.message); })
+            .finally(function() {
+                btn.disabled = false;
+                btn.textContent = "导出当前筛选";
+            });
+    });
+
     // 加载历史
     function loadHistory() {
         fetch("/api/tasks")
@@ -444,30 +758,80 @@ document.addEventListener("DOMContentLoaded", function() {
                         pending: '<span class="badge">等待中</span>',
                     }[task.status] || task.status;
 
-                    var dlBtns = '';
-                    if (task.status === 'completed') {
-                        dlBtns = '<div class="history-dl-btns">' +
-                            '<a href="/api/export_download?type=pc" class="btn btn-sm btn-dl" download>PC.zip</a>' +
-                            '<a href="/api/export_download?type=mixed" class="btn btn-sm btn-dl" download>PC+安卓.zip</a>' +
-                            '</div>';
+                    var dlBtns = '<div class="history-dl-btns">' +
+                        '<a href="/api/export_batch?crawl_id=' + task.id + '&platform=pc" class="btn btn-sm btn-dl" download>本批次PC</a>' +
+                        '<a href="/api/export_batch?crawl_id=' + task.id + '&platform=pc_android" class="btn btn-sm btn-dl" download>本批次PC+安卓</a>' +
+                        '<a href="/api/export_batch?crawl_id=' + task.id + '&platform=android" class="btn btn-sm btn-dl" download>本批次安卓</a>' +
+                        '</div>';
+
+                    // 删除并重爬按钮：非运行中、非等待中的任务都可操作
+                    var recrawlBtn = '';
+                    if (task.status !== 'running' && task.status !== 'pending') {
+                        recrawlBtn = '<button class="btn btn-sm" style="background:#f0ad4e;color:#fff;margin-right:4px" onclick="deleteAndRecrawl(' + task.id + ', \'' + (task.sites || '') + '\')">删除数据并重爬</button>';
                     }
 
-                    tr.innerHTML = '<td>' + task.id + '</td><td>' + (task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期') + '</td><td>' + (task.sites || '') + '</td><td>' + statusBadge + '</td><td>' + task.success_posts + '</td><td>' + task.skipped_posts + '</td><td>' + task.error_posts + '</td><td>' + (task.created_at || '') + '</td><td>' + dlBtns + '<button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
+                    tr.innerHTML = '<td>' + task.id + '</td><td>' + (task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期') + '</td><td>' + (task.sites || '') + '</td><td>' + statusBadge + '</td><td>' + task.success_posts + '</td><td>' + task.skipped_posts + '</td><td>' + task.error_posts + '</td><td>' + (task.created_at || '') + '</td><td><button class="btn btn-sm" onclick="viewBatchData(' + task.id + ')">查看数据</button>' + dlBtns + recrawlBtn + '<button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
                     tbody.appendChild(tr);
                 });
             });
     }
 
+    // 查看某批次的数据：跳转结果页并只显示该批次帖子
+    window.viewBatchData = function(id) {
+        currentBatch = id;
+        document.querySelectorAll(".nav-btn").forEach(function(b) { b.classList.remove("active"); });
+        document.querySelectorAll(".panel").forEach(function(p) { p.classList.remove("active"); });
+        document.querySelector('[data-panel="result"]').classList.add("active");
+        document.getElementById("panel-result").classList.add("active");
+        var banner = document.getElementById("batchBanner");
+        var bid = document.getElementById("batchBannerId");
+        if (bid) bid.textContent = id;
+        if (banner) banner.classList.remove("hidden");
+        loadPosts(true);
+    };
+
+    // 退出批次查看
+    window.exitBatchView = function() {
+        currentBatch = 0;
+        var banner = document.getElementById("batchBanner");
+        if (banner) banner.classList.add("hidden");
+        loadPosts(true);
+    };
+
     window.deleteTask = function(id) {
-        if (!confirm("确定删除这条历史记录？")) return;
+        if (!confirm('确定要删除这个任务以及该批次爬取的所有帖子数据和图片？\n\n此操作不可恢复！')) return;
         fetch("/api/delete_task", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({id: id})
+            body: JSON.stringify({id: id, delete_posts: true})
         }).then(function() { loadHistory(); });
+    };;
+
+    window.deleteAndRecrawl = function(id, sites) {
+        var choice = confirm(
+            "即将删除该批次已爬取的帖子数据，然后重新增量爬取。\n\n" +
+            "这通常用于：爬取中途暂停/取消，数据没拿到，需要重新爬取。\n\n" +
+            "【确定】= 删除数据并重新爬取\n" +
+            "【取消】= 什么都不做"
+        );
+        if (!choice) return;
+        fetch("/api/delete_and_recrawl", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({id: id, sites: sites})
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.status === "ok") {
+                alert("已删除 " + data.deleted + " 条帖子，正在重新增量爬取...");
+                loadHistory();
+            } else {
+                alert("操作失败: " + (data.message || "未知错误"));
+            }
+        }).catch(function(e) { alert("请求失败: " + e.message); });
     };
 
+
     // 导出页面
+
     function loadExportInfo() {
         fetch("/api/posts?limit=1")
             .then(function(r) { return r.json(); })
@@ -479,7 +843,9 @@ document.addEventListener("DOMContentLoaded", function() {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 document.getElementById("countPc").textContent = data.pc || 0;
-                document.getElementById("countMixed").textContent = data.mixed || 0;
+                document.getElementById("countMixed").textContent = data.pc_android || data.mixed || 0;
+                var _cA = document.getElementById("countAndroid");
+                if (_cA) _cA.textContent = data.android || 0;
             });
         // 加载爬取批次
         loadCrawlBatches();
@@ -490,8 +856,10 @@ document.addEventListener("DOMContentLoaded", function() {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 var container = document.getElementById("batchList");
+                var delContainer = document.getElementById("batchDeleteList");
                 if (!data.batches || data.batches.length === 0) {
-                    container.innerHTML = '<p class="empty-text">暂无爬取记录</p>';
+                    if (container) container.innerHTML = '<p class="empty-text">暂无爬取记录</p>';
+                    if (delContainer) delContainer.innerHTML = '<p class="empty-text">暂无爬取记录</p>';
                     return;
                 }
                 
@@ -514,11 +882,42 @@ document.addEventListener("DOMContentLoaded", function() {
                     html += '</div>';
                 });
                 container.innerHTML = html;
+
+                // 批次删除列表
+                if (delContainer) {
+                    var dhtml = '';
+                    data.batches.forEach(function(batch) {
+                        var time = batch.crawl_time ? batch.crawl_time.replace('T', ' ').substring(0, 19) : '未知';
+                        dhtml += '<div class="batch-item">';
+                        dhtml += '<div class="batch-info">';
+                        dhtml += '<span class="batch-time">' + time + '</span>';
+                        dhtml += '<span class="batch-count">共 ' + batch.post_count + ' 条</span>';
+                        dhtml += '</div>';
+                        dhtml += '<div class="batch-actions">';
+                        dhtml += '<button class="btn btn-sm btn-danger" onclick="deleteBatch(' + batch.crawl_id + ', ' + batch.post_count + ')">删除该批次</button>';
+                        dhtml += '</div>';
+                        dhtml += '</div>';
+                    });
+                    delContainer.innerHTML = dhtml;
+                }
             });
     }
 
     window.exportBatch = function(crawlId, platform) {
         window.location.href = "/api/export_batch?crawl_id=" + crawlId + "&platform=" + platform;
+    };
+
+    // 批次删除：删除该批次爬到的全部帖子+任务记录
+    window.deleteBatch = function(crawlId, count) {
+        if (!confirm("确定删除批次 #" + crawlId + " 的全部 " + count + " 条帖子？\n该批次任务历史也会一并删除，无法恢复。")) return;
+        fetch("/api/delete_task", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({id: crawlId, delete_posts: true})
+        }).then(function() {
+            loadCrawlBatches();
+            loadExportInfo();
+        });
     };
 
     // 直接下载导出文件
@@ -543,6 +942,103 @@ document.addEventListener("DOMContentLoaded", function() {
                     alert("启动失败");
                 }
             });
+    };
+
+    // ========== 数据管理 ==========
+    function formatSize(bytes) {
+        if (bytes <= 0) return "0 B";
+        var units = ["B", "KB", "MB", "GB"];
+        var i = 0;
+        var size = bytes;
+        while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+        return size.toFixed(i === 0 ? 0 : 1) + " " + units[i];
+    }
+
+    function loadCleanupInfo() {
+        var container = document.getElementById("cleanupInfo");
+        container.innerHTML = '<p class="loading-text">扫描中...</p>';
+        fetch("/api/cleanup_info")
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var html = '';
+                var hasAny = false;
+
+                if (data.orphan_images && data.orphan_images.count > 0) {
+                    hasAny = true;
+                    html += '<div class="cleanup-item">';
+                    html += '<label class="checkbox-label"><input type="checkbox" class="cleanup-target" value="orphan_images">';
+                    html += '<div class="cleanup-detail"><span class="cleanup-name">孤儿图片</span>';
+                    html += '<span class="cleanup-desc">' + data.orphan_images.count + ' 个文件，' + formatSize(data.orphan_images.size) + '</span></div></label></div>';
+                }
+
+                if (data.export_leftovers && data.export_leftovers.count > 0) {
+                    hasAny = true;
+                    html += '<div class="cleanup-item">';
+                    html += '<label class="checkbox-label"><input type="checkbox" class="cleanup-target" value="export_leftovers">';
+                    html += '<div class="cleanup-detail"><span class="cleanup-name">旧导出文件</span>';
+                    html += '<span class="cleanup-desc">' + data.export_leftovers.count + ' 个文件，' + formatSize(data.export_leftovers.size) + '</span></div></label></div>';
+                }
+
+                if (data.empty_tasks && data.empty_tasks.length > 0) {
+                    hasAny = true;
+                    html += '<div class="cleanup-item">';
+                    html += '<label class="checkbox-label"><input type="checkbox" class="cleanup-target" value="empty_tasks">';
+                    html += '<div class="cleanup-detail"><span class="cleanup-name">空任务记录</span>';
+                    html += '<span class="cleanup-desc">' + data.empty_tasks.length + ' 条无数据的历史任务</span></div></label></div>';
+                }
+
+                if (!hasAny) {
+                    html = '<p class="empty-text">数据库干净，无可清理项</p>';
+                    document.getElementById("cleanupBtn").classList.add("hidden");
+                } else {
+                    document.getElementById("cleanupBtn").classList.remove("hidden");
+                }
+
+                container.innerHTML = html;
+            })
+            .catch(function() {
+                container.innerHTML = '<p class="empty-text">加载失败</p>';
+            });
+    }
+
+    window.doCleanup = function() {
+        var checkboxes = document.querySelectorAll(".cleanup-target:checked");
+        var targets = [];
+        checkboxes.forEach(function(cb) { targets.push(cb.value); });
+        if (targets.length === 0) {
+            alert("请至少勾选一项");
+            return;
+        }
+        if (!confirm("确定清理选中的 " + targets.length + " 项？操作不可恢复。")) return;
+        var btn = document.getElementById("cleanupBtn");
+        btn.disabled = true;
+        btn.textContent = "清理中...";
+        fetch("/api/cleanup", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({targets: targets})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = "执行清理";
+            if (data.status === "ok") {
+                var parts = [];
+                var r = data.result || {};
+                if (r.orphan_images_removed) parts.push("孤儿图片 " + r.orphan_images_removed + " 个");
+                if (r.export_leftovers_removed) parts.push("旧导出 " + r.export_leftovers_removed + " 个");
+                if (r.empty_tasks_removed) parts.push("空任务 " + r.empty_tasks_removed + " 条");
+                alert("清理完成" + (parts.length ? "：" + parts.join("，") : ""));
+                loadCleanupInfo();
+            } else {
+                alert("清理失败");
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.textContent = "执行清理";
+            alert("请求失败");
+        });
     };
 });
 
@@ -571,6 +1067,24 @@ function copyTitle(el) {
             el.classList.remove("copied-title");
             el.textContent = orig;
         }, 800);
+    });
+}
+
+// 备注整块点击复制（复制完整备注，不是被折叠截断的那段）
+function copyNote(el) {
+    // 「网盘大小」行也从 2026-09-23 起一并复制（此前是剔除的）
+    var text = (el.dataset.copy || el.textContent || "")
+        .replace(/\n{3,}/g, "\n\n").trim();
+    navigator.clipboard.writeText(text).then(function() {
+        var box = el.closest(".card-note") || el;
+        box.classList.add("copied-note");
+        var hint = box.querySelector(".note-copy-hint");
+        var orig = hint ? hint.textContent : "";
+        if (hint) hint.textContent = "已复制!";
+        setTimeout(function() {
+            box.classList.remove("copied-note");
+            if (hint) hint.textContent = orig;
+        }, 900);
     });
 }
 

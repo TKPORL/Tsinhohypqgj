@@ -11,14 +11,39 @@ DB_BUSY_TIMEOUT_MS = 10000
 DB_WRITE_RETRIES = 5
 _WRITE_LOCK = threading.RLock()
 
+# 结果排序口径（2026-09-23 用户确认）：点赞降序 → id 倒序。
+# 旧口径是「双网盘置顶 → 组内点赞降序」，会让导出 HTML 到第 N 张时突然从高赞重新开始，
+# 看着像排序坏了，故取消双网盘优先（is_dual_netdisk 仅保留作展示判定，不参与排序）。
+POST_ORDER_SQL = "ORDER BY COALESCE(likes, 0) DESC, id DESC"
+
+
+def is_dual_netdisk(post):
+    """Python 侧判定：百度 + 移动云盘链接都有（现仅用于展示，不参与排序）"""
+    return bool(post.get("baidu_link")) and bool(post.get("mobile_link"))
+
+
+def sort_posts(posts):
+    """按「点赞降序 → id 倒序」排序，与 POST_ORDER_SQL 保持一致。
+    导出等 Python 侧路径统一走这里，避免和 SQL 排序口径不一致。
+    """
+    return sorted(posts, key=lambda p: (
+        -int(p.get("likes") or 0),
+        -int(p.get("id") or 0),
+    ))
+
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
-        # 先检查并添加crawl_id列（如果不存在）
+        # 兼容迁移：旧库可能缺 crawl_id / download_items_json
         try:
             conn.execute("SELECT crawl_id FROM posts LIMIT 1")
-        except:
+        except Exception:
             conn.execute("ALTER TABLE posts ADD COLUMN crawl_id INTEGER")
+
+        try:
+            conn.execute("SELECT download_items_json FROM posts LIMIT 1")
+        except Exception:
+            conn.execute("ALTER TABLE posts ADD COLUMN download_items_json TEXT")
         
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS posts (
@@ -43,6 +68,7 @@ def init_db():
                 crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 post_date TEXT,
                 crawl_id INTEGER,
+                download_items_json TEXT,
                 UNIQUE(source, source_id)
             );
 
@@ -66,6 +92,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_posts_date ON posts(post_date);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_posts_crawl_id ON posts(crawl_id);
+            CREATE INDEX IF NOT EXISTS idx_posts_source_url ON posts(source_url);
         """)
 
 @contextmanager
@@ -105,8 +132,9 @@ def insert_post(post_data):
             (source, source_id, source_url, title, platform, content,
              likes, comments, views, unzip_code, cheat_code,
              baidu_link, baidu_code, mobile_link, mobile_code,
-             images, original_images, post_date, crawled_at, crawl_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             images, original_images, post_date, crawled_at, crawl_id,
+             download_items_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             post_data.get("source"),
             post_data.get("source_id"),
@@ -128,6 +156,7 @@ def insert_post(post_data):
             post_data.get("post_date"),
             local_now,
             post_data.get("crawl_id"),
+            post_data.get("download_items_json"),
         ))
 
 def get_posts(platform=None, source=None, limit=100, offset=0):
@@ -138,18 +167,17 @@ def get_posts(platform=None, source=None, limit=100, offset=0):
             if platform == "pc":
                 query += " AND (platform = 'pc' OR platform = 'unknown')"
             elif platform == "pc_android":
-                # android全部归入pc_android
-                query += " AND (platform = 'pc_android' OR platform = 'android')"
+                # PC+安卓：只含同时支持两者的资源，单安卓另立一类（用户 2026-09-23 要求）
+                query += " AND platform = 'pc_android'"
+            elif platform == "android":
+                query += " AND platform = 'android'"
             else:
                 query += " AND platform = ?"
                 params.append(platform)
         if source and source != "all":
             query += " AND source = ?"
             params.append(source)
-        query += """ ORDER BY
-            (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 0 ELSE 1 END),
-            likes DESC
-            LIMIT ? OFFSET ?"""
+        query += f" {POST_ORDER_SQL} LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         return [dict(row) for row in conn.execute(query, params).fetchall()]
 
@@ -161,8 +189,10 @@ def get_post_count(platform=None, source=None):
             if platform == "pc":
                 query += " AND (platform = 'pc' OR platform = 'unknown')"
             elif platform == "pc_android":
-                # android全部归入pc_android
-                query += " AND (platform = 'pc_android' OR platform = 'android')"
+                # PC+安卓：只含同时支持两者的资源，单安卓另立一类（用户 2026-09-23 要求）
+                query += " AND platform = 'pc_android'"
+            elif platform == "android":
+                query += " AND platform = 'android'"
             else:
                 query += " AND platform = ?"
                 params.append(platform)
@@ -218,9 +248,11 @@ def recover_interrupted_tasks():
 
 def get_tasks(limit=20):
     with get_conn() as conn:
-        return [dict(row) for row in conn.execute(
-            "SELECT * FROM tasks ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()]
+        rows = conn.execute("""
+            SELECT t.*, EXISTS(SELECT 1 FROM posts p WHERE p.crawl_id = t.id) AS has_posts
+            FROM tasks t ORDER BY t.id DESC LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
 
 def get_task(task_id):
     with get_conn() as conn:
@@ -252,10 +284,10 @@ def get_posts_by_crawl_id(crawl_id, platform=None):
             if platform == "pc":
                 query += " AND (platform = 'pc' OR platform = 'unknown')"
             elif platform == "pc_android":
-                query += " AND (platform = 'pc_android' OR platform = 'android')"
-        query += """ ORDER BY
-            (CASE WHEN baidu_link IS NOT NULL AND mobile_link IS NOT NULL THEN 0 ELSE 1 END),
-            likes DESC"""
+                query += " AND platform = 'pc_android'"
+            elif platform == "android":
+                query += " AND platform = 'android'"
+        query += " " + POST_ORDER_SQL
         return [dict(row) for row in conn.execute(query, params).fetchall()]
 
 def get_batch_post_count(crawl_id, platform=None):
@@ -267,5 +299,47 @@ def get_batch_post_count(crawl_id, platform=None):
             if platform == "pc":
                 query += " AND (platform = 'pc' OR platform = 'unknown')"
             elif platform == "pc_android":
-                query += " AND (platform = 'pc_android' OR platform = 'android')"
+                query += " AND platform = 'pc_android'"
+            elif platform == "android":
+                query += " AND platform = 'android'"
         return conn.execute(query, params).fetchone()[0]
+
+
+def delete_posts_by_ids(post_ids):
+    """批量删除帖子。返回删除数量与对应 source_id 列表（供图片清理）。"""
+    if not post_ids:
+        return 0, []
+    with get_conn() as conn:
+        placeholders = ",".join("?" * len(post_ids))
+        rows = conn.execute(
+            f"SELECT source_id FROM posts WHERE id IN ({placeholders})", post_ids
+        ).fetchall()
+        conn.execute(f"DELETE FROM posts WHERE id IN ({placeholders})", post_ids)
+    return len(rows), [r["source_id"] for r in rows]
+
+
+def get_shared_source_ids(source_ids):
+    """查询这些 source_id 中仍被 posts 表引用的集合。
+
+    不同站点的帖子 ID 均为纯数字，图片目录按 source_id 命名时会撞车；
+    删除图片目录前用它做共享保护。
+    """
+    if not source_ids:
+        return set()
+    with get_conn() as conn:
+        placeholders = ",".join("?" * len(source_ids))
+        rows = conn.execute(
+            f"SELECT DISTINCT source_id FROM posts WHERE source_id IN ({placeholders})",
+            [str(s) for s in source_ids],
+        ).fetchall()
+    return {r["source_id"] for r in rows}
+
+
+def delete_posts_by_task(task_id):
+    """删除某次任务批次爬取的全部帖子，返回 source_id 列表（供图片清理）。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT source_id FROM posts WHERE crawl_id = ?", (task_id,)
+        ).fetchall()
+        conn.execute("DELETE FROM posts WHERE crawl_id = ?", (task_id,))
+    return [r["source_id"] for r in rows]

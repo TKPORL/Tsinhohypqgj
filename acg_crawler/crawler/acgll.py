@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets
+from parser import extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets, fix_title_cloud_name
 from parser.image_handler import download_images
 
 class ACGLLCrawler(BaseCrawler):
@@ -85,18 +85,23 @@ class ACGLLCrawler(BaseCrawler):
 
         # 提取发布日期
         post_date = ""
-        date_el = soup.select_one("time.post-date, .entry-date time, .post-meta time")
+        # Zibll 主题：日期在 tooltip 的 title 属性里（title="2026年09月08日 13:40发布"）
+        date_el = soup.select_one("[data-toggle='tooltip'][title*='发布']")
         if date_el:
-            post_date = date_el.get("datetime", "")[:10]
+            m = re.search(r'(\d{4})年(\d{2})月(\d{2})日', date_el.get("title", ""))
+            if m:
+                post_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
 
         # 提取网盘链接
-        links = extract_links(content)
+        links = extract_links_multi(content)
         if not links.get("baidu_link") and not links.get("mobile_link"):
             full_text = str(soup)
-            links = extract_links(full_text)
+            links = extract_links_multi(full_text)
 
         # 提取下载名追加到标题
         cloud_name = extract_cloud_name(content)
+        # 修正标题里的云名：把 PCC/AZC 前缀统一为 C
+        title = fix_title_cloud_name(title)
         if cloud_name and cloud_name not in title:
             title = f"{title} 【{cloud_name}】"
 
@@ -106,19 +111,26 @@ class ACGLLCrawler(BaseCrawler):
         # ACG图书馆没有解压码
         unzip_code = ""
 
-        # 判断平台 - 优先从分类标签判断
+        # 判断平台 - 优先从标题判断（标题比列表页分类更准确，与 acgyxj 对齐）
         platform = "unknown"
         category_lower = (category or "").lower()
         title_lower = title.lower()
 
-        if category_lower == "pc":
+        if "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower or ("pc" in title_lower and "安卓" in title_lower):
+            platform = "pc_android"
+        elif category_lower == "pc":
             platform = "pc"
         elif category_lower in ("az", "安卓", "android"):
-            platform = "android"
-        elif "pc+安卓" in title_lower or "pc&安卓" in title_lower or "pc/安卓" in title_lower:
-            platform = "pc_android"
+            # 列表页分类为安卓，但标题里同时含 PC，按 pc_android 处理（标题优先）
+            if "pc" in title_lower:
+                platform = "pc_android"
+            else:
+                platform = "android"
         elif "安卓" in title_lower:
-            platform = "android"
+            if "pc" in title_lower:
+                platform = "pc_android"
+            else:
+                platform = "android"
         elif "pc" in title_lower or "steam" in title_lower:
             platform = "pc"
 
@@ -129,6 +141,7 @@ class ACGLLCrawler(BaseCrawler):
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
+        import json as _json_dl
         local_images = download_images(images, source_id, proxy=proxy)
         if local_images:
             images = local_images
@@ -140,6 +153,7 @@ class ACGLLCrawler(BaseCrawler):
             "title": title,
             "platform": platform,
             "content": content[:5000],
+            "download_items_json": _json_dl.dumps(links.get("items", []), ensure_ascii=False),
             "likes": likes,
             "comments": 0,
             "views": 0,

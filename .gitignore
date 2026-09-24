@@ -20,6 +20,10 @@ acg_crawler/.env
 终端完整内容.txt
 .workbuddy/
 
+# 本地解压导出目录
+PC下载 (1)/
+PC+安卓下载 (1)/
+
 # 系统文件
 .DS_Store
 Thumbs.db

@@ -33,7 +33,32 @@ class BaseCrawler(ABC):
         self._proxy_enabled = self.config.get("proxy", {}).get("enabled", False)
         if self._proxy_enabled:
             proxy = self.config["proxy"]["http"]
+            # 启动时探测代理端口是否可达：代理软件没开时自动退回直连，
+            # 避免所有请求（含登录POST）被 ProxyError 打死
+            if not self._proxy_reachable(proxy):
+                print(f"[{self.site_name}] 代理 {proxy} 不可用，本次自动改用直连")
+                self._proxy_enabled = False
+                return
             self.session.proxies = {"http": proxy, "https": proxy}
+
+    @staticmethod
+    def _proxy_reachable(proxy_url):
+        """TCP 探测代理端口（1秒超时）"""
+        import socket
+        from urllib.parse import urlparse
+        try:
+            p = urlparse(proxy_url)
+            host = p.hostname or "127.0.0.1"
+            port = p.port or 7890
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            try:
+                s.connect((host, port))
+                return True
+            finally:
+                s.close()
+        except Exception:
+            return False
 
     def _delay(self):
         min_delay = self.config.get("crawler", {}).get("request_delay_min", 0.5)

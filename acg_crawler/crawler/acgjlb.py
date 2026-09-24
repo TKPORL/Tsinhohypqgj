@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets
+from parser import extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets, fix_title_cloud_name
 from parser.image_handler import download_images
 
 class ACGJLBCrawler(BaseCrawler):
@@ -15,7 +15,9 @@ class ACGJLBCrawler(BaseCrawler):
         self.base_url = "https://www.acgjlb.cc"
 
     def get_list_page(self, page_num):
-        url = f"{self.base_url}/acggame?page={page_num}"
+        # 该站使用 /page/N 路径分页，?page=N 实际仍返回第一页
+        url = (f"{self.base_url}/acggame" if page_num == 1
+               else f"{self.base_url}/acggame/page/{page_num}")
         soup = self._soup(url)
         results = []
         # ACG俱乐部使用Zibll主题，帖子在 div.item-body 容器中
@@ -156,18 +158,23 @@ class ACGJLBCrawler(BaseCrawler):
 
         # 提取发布日期
         post_date = ""
-        date_el = soup.select_one("time.post-date, .entry-date time, .post-meta time")
+        # Zibll 主题：日期在 tooltip 的 title 属性里（title="2026年09月11日 02:59发布"）
+        date_el = soup.select_one("[data-toggle='tooltip'][title*='发布']")
         if date_el:
-            post_date = date_el.get("datetime", "")[:10]
+            m = re.search(r'(\d{4})年(\d{2})月(\d{2})日', date_el.get("title", ""))
+            if m:
+                post_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
 
         # 提取网盘链接
-        links = extract_links(content)
+        links = extract_links_multi(content)
         if not links.get("baidu_link") and not links.get("mobile_link"):
             full_text = str(soup)
-            links = extract_links(full_text)
+            links = extract_links_multi(full_text)
 
         # 提取下载名追加到标题
         cloud_name = extract_cloud_name(content)
+        # 修正标题里的云名：把 PCC/AZC 前缀统一为 C
+        title = fix_title_cloud_name(title)
         if cloud_name and cloud_name not in title:
             title = f"{title} 【{cloud_name}】"
 
@@ -211,6 +218,7 @@ class ACGJLBCrawler(BaseCrawler):
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
+        import json as _json_dl
         local_images = download_images(images, source_id, proxy=proxy)
         if local_images:
             images = local_images
@@ -222,6 +230,7 @@ class ACGJLBCrawler(BaseCrawler):
             "title": title,
             "platform": platform,
             "content": content[:5000],
+            "download_items_json": _json_dl.dumps(links.get("items", []), ensure_ascii=False),
             "likes": likes,
             "comments": 0,
             "views": 0,
@@ -241,11 +250,11 @@ class ACGJLBCrawler(BaseCrawler):
             url = f"{self.base_url}/acggame"
             soup = self._soup(url)
             # ACG俱乐部使用Zibll主题分页
-            page_links = soup.select("div.pagenav a, a[href*='page=']")
+            page_links = soup.select("div.pagenav a, a[href*='/page/'], a[href*='page=']")
             max_page = 1
             for a in page_links:
                 href = a.get("href", "")
-                match = re.search(r'page=(\d+)', href)
+                match = re.search(r'(?:/page/|[?&]page=)(\d+)', href)
                 if match:
                     max_page = max(max_page, int(match.group(1)))
             return max_page

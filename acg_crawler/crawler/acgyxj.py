@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets
+from parser import extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets, fix_title_cloud_name
 from parser.image_handler import download_images
 
 class ACGYXJCrawler(BaseCrawler):
@@ -160,16 +160,19 @@ class ACGYXJCrawler(BaseCrawler):
                 pass
 
         post_date = ""
-        date_el = soup.select_one("time.post-date, .post-meta time, .entry-date")
+        # 游戏姬详情页的 time 元素无 class，直接取第一个带 datetime 的
+        date_el = soup.select_one("time[datetime]")
         if date_el:
-            post_date = date_el.get("datetime", "") or date_el.get_text(strip=True)
+            post_date = date_el.get("datetime", "")[:10]
 
-        links = extract_links(content)
+        links = extract_links_multi(content)
         if not links.get("baidu_link") and not links.get("mobile_link"):
             full_text = str(soup)
-            links = extract_links(full_text)
+            links = extract_links_multi(full_text)
 
         cloud_name = extract_cloud_name(content)
+        # 修正标题里的云名：把 PCC/AZC 前缀统一为 C
+        title = fix_title_cloud_name(title)
         if cloud_name and cloud_name not in title:
             title = f"{title} 【{cloud_name}】"
 
@@ -205,6 +208,7 @@ class ACGYXJCrawler(BaseCrawler):
         proxy = None
         if self.config.get("proxy", {}).get("enabled"):
             proxy = self.config["proxy"]["http"]
+        import json as _json_dl
         local_images = download_images(images, source_id, proxy=proxy)
         if local_images:
             images = local_images
@@ -216,6 +220,7 @@ class ACGYXJCrawler(BaseCrawler):
             "title": title,
             "platform": platform,
             "content": content[:5000],
+            "download_items_json": _json_dl.dumps(links.get("items", []), ensure_ascii=False),
             "likes": likes,
             "comments": 0,
             "views": 0,

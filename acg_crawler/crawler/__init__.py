@@ -8,7 +8,8 @@ from crawler.acgyxj import ACGYXJCrawler
 from crawler.acgrx import ACGRXCrawler
 from crawler.acgll import ACGLLCrawler
 from crawler.acgjlb import ACGJLBCrawler
-from database import insert_post, create_task, update_task, get_conn
+from crawler.kungal import KungalCrawler
+from database import insert_post, create_task, update_task, delete_task, delete_posts_by_task, get_conn
 from config import get_speed_profile, get_site_detail_workers
 
 CRAWLERS = {
@@ -16,6 +17,7 @@ CRAWLERS = {
     "acgrx": ACGRXCrawler,
     "acgll": ACGLLCrawler,
     "acgjlb": ACGJLBCrawler,
+    "kungal": KungalCrawler,
 }
 
 # 站点键 -> 中文名（面板显示用，不依赖爬虫实例）
@@ -24,6 +26,7 @@ SITE_NAMES = {
     "acgrx": "萌幻ACG",
     "acgll": "ACG图书馆",
     "acgjlb": "ACG俱乐部",
+    "kungal": "鲲Galgame",
 }
 
 
@@ -35,6 +38,8 @@ class CrawlerEngine:
         self.running = False
         self.cancelled = False
         self.task_id = None
+        self.auto_delete_on_cancel = False
+        self.cleanup_images_callback = None
         self.speed_name = "balanced"
         self.progress_callback = None
         self.log_callback = None
@@ -113,6 +118,16 @@ class CrawlerEngine:
                 return "skipped"
             has_baidu = bool(post.get("baidu_link"))
             has_mobile = bool(post.get("mobile_link"))
+            # 兼容 v4 多链接：download_items_json 含 baidu/mobile provider 时也算有链接
+            if not (has_baidu or has_mobile):
+                items_str = post.get("download_items_json")
+                if items_str:
+                    try:
+                        items = json.loads(items_str) if isinstance(items_str, str) else items_str
+                        if any(it.get("provider") in ("baidu", "mobile") for it in items):
+                            has_baidu = True
+                    except Exception:
+                        pass
             if not (has_baidu or has_mobile):
                 return "skipped"
             post["crawl_id"] = task_id
@@ -121,11 +136,19 @@ class CrawlerEngine:
         except Exception:
             return "error"
 
-    def _crawl_detail_and_count(self, site_key, crawler, item, counters, task_id):
-        """解析单个详情页并更新站点计数"""
+    def _crawl_detail_and_count(self, site_key, crawler, item, counters, task_id, skip_existing=False):
+        """解析单个详情页并更新站点计数；skip_existing=True 时已入库的帖子直接跳过"""
         url = item["url"] if isinstance(item, dict) else item
         category = item.get("category", "") if isinstance(item, dict) else ""
         result = "error"
+        if skip_existing and self._url_exists(crawler, url):
+            self._site_log(site_key, f"已入库，跳过 {url}")
+            with self._lock:
+                st = self.site_states.get(site_key, {})
+                st["current"] = st.get("current", 0) + 1
+                st["skipped"] = st.get("skipped", 0) + 1
+            self._aggregate_progress()
+            return "skipped"
         try:
             if self.cancelled:
                 return "skipped"
@@ -134,7 +157,13 @@ class CrawlerEngine:
             if result == "success":
                 self._site_log(site_key, f"✓ {post['title'][:50]}...")
             elif result == "skipped" and post:
-                self._site_log(site_key, f"✗ 跳过(无链接/平台未知): {(post.get('title') or '')[:50]}...")
+                reason = post.get("skip_reason")
+                if reason:
+                    self._site_log(site_key,
+                                   f"✗ 跳过 {reason}：{(post.get('title') or '')[:50]}")
+                else:
+                    self._site_log(site_key,
+                                   f"✗ 跳过(无链接/平台未知): {(post.get('title') or '')[:50]}...")
         except Exception as e:
             result = "error"
             self._site_log(site_key, f"解析失败: {e}", "error")
@@ -152,15 +181,16 @@ class CrawlerEngine:
         self._aggregate_progress()
         return result
 
-    def _crawl_site_by_page(self, site_key, start_page, end_page, task_id):
-        """单站点按页码爬取（站内详情并发）"""
+    def _crawl_site_by_page(self, site_key, start_page, end_page, task_id, skip_existing=False):
+        """单站点按页码爬取（站内详情并发）；skip_existing=True 时跳过已入库帖子"""
         detail_workers = get_site_detail_workers(self.speed_name, site_key)
         crawler_cls = CRAWLERS.get(site_key)
         if not crawler_cls:
             return
         crawler = crawler_cls(self.config)
         self._update_site_state(site_key, status="running")
-        self._site_log(site_key, f"开始爬取第 {start_page}-{end_page} 页（详情并发{detail_workers}）")
+        dedup_hint = "，跳过已入库" if skip_existing else ""
+        self._site_log(site_key, f"开始爬取第 {start_page}-{end_page} 页（详情并发{detail_workers}{dedup_hint}）")
 
         try:
             for page in range(start_page, end_page + 1):
@@ -178,7 +208,7 @@ class CrawlerEngine:
                         for item in items:
                             if self.cancelled:
                                 break
-                            self._crawl_detail_and_count(site_key, crawler, item, None, task_id)
+                            self._crawl_detail_and_count(site_key, crawler, item, None, task_id, skip_existing)
                     else:
                         with ThreadPoolExecutor(max_workers=detail_workers) as executor:
                             futures = []
@@ -186,7 +216,7 @@ class CrawlerEngine:
                                 if self.cancelled:
                                     break
                                 futures.append(executor.submit(
-                                    self._crawl_detail_and_count, site_key, crawler, item, None, task_id))
+                                    self._crawl_detail_and_count, site_key, crawler, item, None, task_id, skip_existing))
                             for f in as_completed(futures):
                                 try:
                                     f.result()
@@ -205,16 +235,24 @@ class CrawlerEngine:
             self._update_site_state(site_key, status="failed")
             self._site_log(site_key, f"爬取出错: {e}", "error")
 
-    def _check_existing(self, post):
-        """检查帖子是否已存在（增量爬取用）"""
-        with get_conn() as conn:
-            return conn.execute(
-                "SELECT id FROM posts WHERE source = ? AND source_id = ?",
-                (post.get("source"), post.get("source_id"))
-            ).fetchone()
+    def _url_exists(self, crawler, url):
+        """URL预查：该站是否已存在此帖子（免去下载整个详情页）"""
+        try:
+            with get_conn() as conn:
+                return conn.execute(
+                    "SELECT id FROM posts WHERE source = ? AND source_url = ?",
+                    (crawler.site_name, url)
+                ).fetchone()
+        except Exception:
+            return None
 
     def _crawl_site_incremental(self, site_key, task_id):
-        """单站点增量爬取（站内详情并发）"""
+        """单站点增量爬取：URL预查省流量，连续一整页全部已入库才停止。
+
+        说明：这些站点会把"更新过的旧帖"顶回列表页（URL不变），
+        旧逻辑"遇到第一个已存在就停"会永远学不到这类更新帖，
+        因此改为整页判断。
+        """
         detail_workers = get_site_detail_workers(self.speed_name, site_key)
         crawler_cls = CRAWLERS.get(site_key)
         if not crawler_cls:
@@ -226,60 +264,72 @@ class CrawlerEngine:
         try:
             page = 1
             max_pages = crawler.get_total_pages()
-            found_existing = False
+            consecutive_existing_pages = 0
 
-            while page <= max_pages and not found_existing and not self.cancelled:
+            while page <= max_pages and consecutive_existing_pages < 2 and not self.cancelled:
                 try:
                     items = crawler.get_list_page(page)
+                    with self._lock:
+                        self.site_states[site_key]["page"] = page
                     self._site_log(site_key, f"第{page}页: 发现 {len(items)} 个帖子")
 
+                    # URL 预查：先在本页内判重，全已存在才停止翻页
+                    urls = [item["url"] if isinstance(item, dict) else item for item in items]
+                    existing_flags = {u: bool(self._url_exists(crawler, u)) for u in urls}
+                    new_items = [it for it in items
+                                 if not existing_flags[it["url"] if isinstance(it, dict) else it]]
+
+                    if items and not new_items:
+                        consecutive_existing_pages += 1
+                        self._site_log(
+                            site_key,
+                            f"第{page}页全部已入库（连续{consecutive_existing_pages}页），继续确认下一页")
+                        page += 1
+                        continue
+                    consecutive_existing_pages = 0
+
+                    if not items:
+                        self._site_log(site_key, f"第{page}页无帖子，停止")
+                        break
+
+                    # 只处理新帖：详情并发
+                    with self._lock:
+                        self.site_states[site_key]["total"] += len(items)
                     if detail_workers <= 1:
-                        for item in items:
-                            if self.cancelled or found_existing:
+                        for item in new_items:
+                            if self.cancelled:
                                 break
-                            url = item["url"] if isinstance(item, dict) else item
-                            category = item.get("category", "") if isinstance(item, dict) else ""
-                            try:
-                                post = crawler.parse_detail(url, category=category) if category else crawler.parse_detail(url)
-                                if post and self._check_existing(post):
-                                    self._site_log(site_key, "遇到已有数据，增量爬取完成")
-                                    found_existing = True
-                                    break
-                                result = self._process_post(site_key, crawler, post, None, task_id)
-                                with self._lock:
-                                    st = self.site_states[site_key]
-                                    st["current"] += 1
-                                    st["total"] += 1
-                                    if result == "success":
-                                        st["success"] += 1
-                                    elif result == "skipped":
-                                        st["skipped"] += 1
-                                    else:
-                                        st["error"] += 1
-                                self._aggregate_progress()
-                            except Exception as e:
-                                self._site_log(site_key, f"解析失败: {e}", "error")
+                            self._crawl_detail_and_count(site_key, crawler, item, None, task_id)
                     else:
                         with ThreadPoolExecutor(max_workers=detail_workers) as executor:
                             futures = []
-                            for item in items:
-                                if self.cancelled or found_existing:
+                            for item in new_items:
+                                if self.cancelled:
                                     break
-                                url = item["url"] if isinstance(item, dict) else item
-                                category = item.get("category", "") if isinstance(item, dict) else ""
                                 futures.append(executor.submit(
-                                    self._incremental_check_and_process, site_key, crawler, url, category, task_id))
+                                    self._crawl_detail_and_count, site_key, crawler, item, None, task_id))
                             for f in as_completed(futures):
                                 try:
-                                    if f.result() == "existing":
-                                        found_existing = True
+                                    f.result()
                                 except Exception:
                                     pass
+
+                    # 本页已存在部分计入进度
+                    skipped_existing = len(items) - len(new_items)
+                    if skipped_existing:
+                        with self._lock:
+                            st = self.site_states[site_key]
+                            st["current"] += skipped_existing
+                            st["skipped"] += skipped_existing
+                        self._aggregate_progress()
+
                     page += 1
                 except Exception as e:
                     self._site_log(site_key, f"第{page}页获取失败: {e}", "error")
                     page += 1
 
+            if not self.cancelled and consecutive_existing_pages >= 2:
+                self._site_log(site_key, "连续两页全部已入库，增量爬取完成")
             final_status = "cancelled" if self.cancelled else "completed"
             self._update_site_state(site_key, status=final_status)
             self._site_log(site_key, "增量爬取完成" if not self.cancelled else "已停止")
@@ -287,36 +337,11 @@ class CrawlerEngine:
             self._update_site_state(site_key, status="failed")
             self._site_log(site_key, f"爬取出错: {e}", "error")
 
-    def _incremental_check_and_process(self, site_key, crawler, url, category, task_id):
-        """增量模式单帖处理：存在则返回existing"""
-        try:
-            if self.cancelled:
-                return "existing"
-            post = crawler.parse_detail(url, category=category) if category else crawler.parse_detail(url)
-            if post and self._check_existing(post):
-                self._site_log(site_key, "遇到已有数据，增量爬取完成")
-                return "existing"
-            result = self._process_post(site_key, crawler, post, None, task_id)
-            with self._lock:
-                st = self.site_states[site_key]
-                st["current"] += 1
-                st["total"] += 1
-                if result == "success":
-                    st["success"] += 1
-                elif result == "skipped":
-                    st["skipped"] += 1
-                else:
-                    st["error"] += 1
-            self._aggregate_progress()
-            return result
-        except Exception as e:
-            self._site_log(site_key, f"解析失败: {e}", "error")
-            return "error"
-
     def _run_sites_parallel(self, sites, site_runner, mode_name, params):
         """并行运行各站点任务，返回汇总统计"""
         self.running = True
         self.cancelled = False
+        self.auto_delete_on_cancel = False
         self._init_site_states(sites)
 
         sites_str = ",".join(sites)
@@ -353,6 +378,17 @@ class CrawlerEngine:
             skipped_posts=skipped,
             error_posts=error,
         )
+
+        # Cancel后根据用户选择决定是否删除已爬数据
+        if self.cancelled and self.auto_delete_on_cancel and self.task_id:
+            self._site_log("系统", "正在删除已爬取的临时数据...")
+            source_ids = delete_posts_by_task(self.task_id)
+            if source_ids and self.cleanup_images_callback:
+                self.cleanup_images_callback(source_ids)
+            delete_task(self.task_id)
+            self._site_log("系统", f"已删除 {len(source_ids)} 条帖子及图片")
+            self.task_id = None
+
         return {
             "task_id": self.task_id,
             "status": status,
@@ -367,30 +403,48 @@ class CrawlerEngine:
         self.speed_name = name
         return name
 
-    def crawl_by_page(self, sites, start_page, end_page, speed_name=None):
-        """按页码爬取"""
+    def crawl_by_page(self, site_pages, speed_name=None, skip_existing=False):
+        """按页码爬取，每站可用不同区间。
+
+        site_pages: {site_key: (start_page, end_page)}，非空。
+                   各站总页数/更新速度不同，逐个指定可避免更新慢的站点翻到旧内容。
+        skip_existing=True 时跳过已入库帖子（不刷新旧数据）。
+        """
+        if not isinstance(site_pages, dict) or not site_pages:
+            raise ValueError("crawl_by_page 需要非空的 {site_key: (start_page, end_page)}")
         if speed_name:
             self.set_speed(speed_name)
-        params = json.dumps({"start_page": start_page, "end_page": end_page})
+
+        pages = {k: (int(v[0]), int(v[1])) for k, v in site_pages.items()}
+        params = json.dumps({
+            "site_pages": {k: {"start": s, "end": e} for k, (s, e) in pages.items()},
+            "skip_existing": skip_existing,
+        }, ensure_ascii=False)
         return self._run_sites_parallel(
-            sites,
-            lambda site: self._crawl_site_by_page(site, start_page, end_page, self.task_id),
+            list(pages.keys()),
+            lambda site: self._crawl_site_by_page(site, pages[site][0], pages[site][1],
+                                                  self.task_id, skip_existing),
             "by_page", params
         )
 
-    def crawl_by_date(self, sites, start_date, end_date, speed_name=None):
-        """按日期爬取"""
+    def crawl_by_date(self, sites, start_date, end_date, speed_name=None, skip_existing=False):
+        """按日期爬取：逐页翻页，按帖子发布日期过滤，越界自动停。
+
+        旧实现依赖 crawler.crawl_date_range() 一次性收集全部帖子再入库，
+        没有进度、无法取消、日期提取失败时静默丢弃全部数据，已弃用。
+        """
         if speed_name:
             self.set_speed(speed_name)
-        params = json.dumps({"start_date": start_date, "end_date": end_date})
+        params = json.dumps({"start_date": start_date, "end_date": end_date,
+                            "skip_existing": skip_existing})
         return self._run_sites_parallel(
             sites,
-            lambda site: self._make_site_runner_by_date(site, start_date, end_date)(),
+            lambda site: self._crawl_site_by_date(site, start_date, end_date, self.task_id, skip_existing),
             "by_date", params
         )
 
     def crawl_incremental(self, sites, speed_name=None):
-        """增量爬取"""
+        """增量爬取（自动去重，整页已存在才停止）"""
         if speed_name:
             self.set_speed(speed_name)
         params = json.dumps({"mode": "incremental"})
@@ -400,61 +454,99 @@ class CrawlerEngine:
             "incremental", params
         )
 
+    def _crawl_site_by_date(self, site_key, start_date, end_date, task_id, skip_existing=False):
+        """单站点按日期爬取：逐页解析，post_date 早于 start_date 即停止"""
+        detail_workers = get_site_detail_workers(self.speed_name, site_key)
+        crawler_cls = CRAWLERS.get(site_key)
+        if not crawler_cls:
+            return
+        crawler = crawler_cls(self.config)
+        self._update_site_state(site_key, status="running")
+        dedup_hint = "，跳过已入库" if skip_existing else ""
+        self._site_log(site_key, f"按日期爬取 {start_date} ~ {end_date}（详情并发{detail_workers}{dedup_hint}）")
+
+        try:
+            page = 1
+            max_pages = crawler.get_total_pages()
+            reached_older = False
+
+            while page <= max_pages and not reached_older and not self.cancelled:
+                try:
+                    items = crawler.get_list_page(page)
+                    with self._lock:
+                        self.site_states[site_key]["page"] = page
+                        self.site_states[site_key]["total"] += len(items)
+                    self._site_log(site_key, f"第{page}页: 发现 {len(items)} 个帖子")
+                    self._aggregate_progress()
+
+                    in_range = []
+                    for item in items:
+                        url = item["url"] if isinstance(item, dict) else item
+                        category = item.get("category", "") if isinstance(item, dict) else ""
+                        if skip_existing and self._url_exists(crawler, url):
+                            with self._lock:
+                                st = self.site_states[site_key]
+                                st["current"] += 1
+                                st["skipped"] += 1
+                            self._aggregate_progress()
+                            continue
+                        post = crawler.parse_detail(url, category=category) if category else crawler.parse_detail(url)
+                        if post:
+                            pd = post.get("post_date") or ""
+                            if pd and pd < start_date:
+                                # 列表按时间倒序，遇到更早的帖子即可停止
+                                reached_older = True
+                            elif pd and pd > end_date:
+                                # 晚于结束日期：跳过但继续翻页
+                                with self._lock:
+                                    st = self.site_states[site_key]
+                                    st["current"] += 1
+                                self._aggregate_progress()
+                            elif pd:
+                                in_range.append(post)
+                            else:
+                                # 无日期数据：保守入库（避免日期提取偶发失败丢帖）
+                                in_range.append(post)
+                        else:
+                            with self._lock:
+                                st = self.site_states[site_key]
+                                st["current"] += 1
+                                st["error"] += 1
+                            self._aggregate_progress()
+
+                    for post in in_range:
+                        if self.cancelled:
+                            break
+                        result = self._process_post(site_key, crawler, post, None, task_id)
+                        with self._lock:
+                            st = self.site_states[site_key]
+                            st["current"] += 1
+                            if result == "success":
+                                st["success"] += 1
+                            elif result == "skipped":
+                                st["skipped"] += 1
+                            else:
+                                st["error"] += 1
+                        self._aggregate_progress()
+
+                    if reached_older:
+                        self._site_log(site_key, f"第{page}页出现早于 {start_date} 的帖子，停止翻页")
+                    page += 1
+                except Exception as e:
+                    self._site_log(site_key, f"第{page}页获取失败: {e}", "error")
+                    page += 1
+
+            final_status = "cancelled" if self.cancelled else "completed"
+            self._update_site_state(site_key, status=final_status)
+            self._site_log(site_key, "按日期爬取完成" if not self.cancelled else "已停止")
+        except Exception as e:
+            self._update_site_state(site_key, status="failed")
+            self._site_log(site_key, f"爬取出错: {e}", "error")
+
     def cancel(self):
         self.cancelled = True
 
     # ===== 兼容旧接口 =====
-    def _make_site_runner_by_date(self, site, start_date, end_date):
-        """旧版按日期站点运行器（保持兼容）"""
-        detail_workers = get_site_detail_workers(self.speed_name, site)
-        crawler_cls = CRAWLERS.get(site)
-        if not crawler_cls:
-            return lambda: None
-
-        def runner():
-            crawler = crawler_cls(self.config)
-            self._update_site_state(site, status="running")
-            self._site_log(site, f"开始爬取 {start_date} ~ {end_date}（详情并发{detail_workers}）")
-            try:
-                posts = crawler.crawl_date_range(start_date, end_date)
-                with self._lock:
-                    self.site_states[site]["total"] = len(posts)
-                self._aggregate_progress()
-                # 逐条处理（按日期模式帖子已由crawler批量解析）
-                with ThreadPoolExecutor(max_workers=detail_workers) as executor:
-                    futures = []
-                    for post in posts:
-                        if self.cancelled:
-                            break
-                        futures.append(executor.submit(self._process_and_count, site, post))
-                    for f in as_completed(futures):
-                        try:
-                            f.result()
-                        except Exception:
-                            pass
-                final_status = "cancelled" if self.cancelled else "completed"
-                self._update_site_state(site, status=final_status)
-                self._site_log(site, "爬取完成" if not self.cancelled else "已停止")
-            except Exception as e:
-                self._update_site_state(site, status="failed")
-                self._site_log(site, f"爬取出错: {e}", "error")
-
-        return runner
-
-    def _process_and_count(self, site, post):
-        """按日期模式的单帖处理+计数"""
-        try:
-            result = self._process_post(site, None, post, None, self.task_id)
-        except Exception:
-            result = "error"
-        with self._lock:
-            st = self.site_states[site]
-            st["current"] += 1
-            if result == "success":
-                st["success"] += 1
-            elif result == "skipped":
-                st["skipped"] += 1
-            else:
-                st["error"] += 1
-        self._aggregate_progress()
-        return result
+    # 旧的 _make_site_runner_by_date / _process_and_count 已删除：
+    # 依赖 crawl_date_range() 一次性收集全部帖子，无进度无取消，
+    # 日期提取失败时静默丢帖，已由 _crawl_site_by_date 取代。
