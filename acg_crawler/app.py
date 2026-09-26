@@ -15,11 +15,24 @@ from database import (init_db, get_posts, get_post_count, delete_post, get_tasks
 from crawler import CrawlerEngine
 from crawler import SITE_NAMES
 from generator import export_posts, export_posts_filtered
+from parser import game_name_from_title
 
 app = Flask(__name__)
 config = load_config()
 init_db()
 recovered_tasks = recover_interrupted_tasks()
+
+
+def _with_game_name(posts):
+    """给每条帖子补一个 game_name 字段（卡片上用「游戏名」按钮）。
+
+    用户 2026-09-26：从标题抽「游戏名【平台 大小】」，点一下复制，
+    这正是该游戏在百度网盘里的名字，方便去网盘里找。
+    """
+    for p in posts or []:
+        if isinstance(p, dict) and not p.get("game_name"):
+            p["game_name"] = game_name_from_title(p.get("title", ""))
+    return posts
 
 def _maybe_auto_backup():
     """启动时检查，距上次备份 > 7 天自动备份一次（保留最近 10 个）"""
@@ -341,7 +354,7 @@ def api_posts():
         limit, offset = 100, 0
     posts = get_posts(platform=platform, source=source, limit=limit, offset=offset)
     total = get_post_count(platform=platform, source=source)
-    return jsonify({"posts": posts, "total": total, "limit": limit, "offset": offset})
+    return jsonify({"posts": _with_game_name(posts), "total": total, "limit": limit, "offset": offset})
 
 @app.route("/api/posts_grouped")
 def api_posts_grouped():
@@ -410,7 +423,7 @@ def api_posts_grouped():
         # 按平台分组：PC / PC+安卓 / 安卓 三类互不重叠（2026-09-23 起单安卓独立成组）
         groups = {}
         for row in rows:
-            d = dict(row)
+            d = _with_game_name([dict(row)])[0]
             p = d.get("platform", "unknown")
             if p == "unknown":
                 p = "pc"

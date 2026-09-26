@@ -754,6 +754,12 @@ document.addEventListener("DOMContentLoaded", function() {
         var platformTag = platformTags[post.platform] || platformTags.unknown;
 
         var linksHtml = "";
+        // 游戏名按钮：用后端给的 game_name（从标题抽「游戏名【平台 大小】」），
+        // 点一下复制，正是网盘里的游戏名，方便去网盘里找（用户 2026-09-26）
+        var gname = post.game_name || post.title || "";
+        if (gname) {
+            linksHtml += '<button class="link-btn btn-game" data-copy="' + escapeHtml(gname) + '" title="点击复制游戏名：' + escapeHtml(gname) + '" onclick="copyText(this)">游戏名</button>';
+        }
         // 多链接渲染：优先 download_items_json（按平台分别按钮）
         var items = [];
         if (post.download_items_json) {
@@ -787,15 +793,14 @@ document.addEventListener("DOMContentLoaded", function() {
                 linksHtml += '<a href="' + post.baidu_link + '" class="link-btn link-baidu" target="_blank">百度网盘' + (post.baidu_code ? ' ('+post.baidu_code+')' : '') + '</a>';
             }
         }
-        // 解压码 / 作弊码按钮：与「百度网盘」「原帖」放在同一行，
-        // 方便一眼看到、顺手点（用户 2026-09-26：原来在卡片最底部太靠下）
+        // 按钮顺序（用户 2026-09-26）：游戏名 → 百度网盘 → 原帖 → 解压码 → 作弊码
+        linksHtml += '<a href="' + post.source_url + '" class="link-btn link-source" target="_blank">原帖</a>';
         if (post.unzip_code) {
             linksHtml += '<button class="link-btn btn-code" data-copy="' + escapeHtml(post.unzip_code) + '" title="' + escapeHtml(post.unzip_code) + '" onclick="copyText(this)">解压码</button>';
         }
         if (post.cheat_code) {
             linksHtml += '<button class="link-btn btn-code" data-copy="作弊码：' + escapeHtml(post.cheat_code) + '" title="作弊码：' + escapeHtml(post.cheat_code) + '" onclick="copyText(this)">作弊码</button>';
         }
-        linksHtml += '<a href="' + post.source_url + '" class="link-btn link-source" target="_blank">原帖</a>';
 
         var footerHtml = "";
 

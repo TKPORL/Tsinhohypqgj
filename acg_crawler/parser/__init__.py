@@ -969,3 +969,103 @@ def oversize_reason(title):
     if gb is not None and gb > MAX_SIZE_GB:
         return f"体积 {size_text} 超过 {MAX_SIZE_GB:g}G 上限"
     return None
+
+
+# ======================================================================
+# 游戏名提取（2026-09-26 用户要求：卡片上加「游戏名」按钮，点一下复制）
+#
+# 用户要的格式举例：``药丸王【PC+安卓 8.80G】``
+#   —— 游戏名 + 平台/大小括号（这正是该游戏在百度网盘里的名字，方便去网盘里找）
+# 做法：把标题拆开，剥掉开头【标签】、尾部【编号】、尾部平台括号，
+#       剩下的中间部分就是游戏名，再把平台/大小括号拼回去。
+# ======================================================================
+
+# 尾部「平台 大小」括号（带大小），用于回拼
+_GAME_SIZE_BRACKET_RE = re.compile(
+    r'[【\[]\s*(?:PC|pc|安卓|Android|android|双端)'
+    r'(?:\s*[+＋&、]\s*(?:PC|pc|安卓|Android|android))*'
+    r'\s*(?:盖世|joi|JOI|joiplay|mtool|MTool|mTool|吉里吉里|krkr|KRKR)?'
+    r'\s*[\s/／]\s*(?P<size>\d+\.?\d*\s*[GMgm][Bb]?)\s*[】\]]',
+    re.IGNORECASE)
+# 纯平台括号（无大小），用于回拼（如 kup 的 【PC】）
+_GAME_PLAT_ONLY_RE = re.compile(
+    r'[【\[]\s*(?P<plat>(?:PC|pc|安卓|Android|android|双端)'
+    r'(?:\s*[+＋&、]\s*(?:PC|pc|安卓|Android|android))*)'
+    r'\s*(?P<extra>盖世|joi|JOI|joiplay|mtool|MTool|mTool|吉里吉里|krkr|KRKR)?\s*[】\]]',
+    re.IGNORECASE)
+# 纯体积括号
+_GAME_SIZE_ONLY_RE = re.compile(
+    r'[【\[]\s*(?P<size>\d+\.?\d*\s*[GMgm][Bb]?)\s*[】\]]', re.IGNORECASE)
+# 尾部【编号】（纯数字）
+_TRAILING_ID_BRACKET_RE = re.compile(r'\s*[【\[]\s*[A-Za-z]{0,2}\d{4,7}\s*[】\]]\s*$')
+# 版本号尾巴（v0.37 / 1.0.2 / 0.4.2b 等），提取游戏名时要留着
+_VERSION_TAIL_RE = re.compile(r'\s*(?:v|V|Ver\.?|版本)?\s*\d+(?:\.\d+)+[a-zA-Z]?\s*$')
+
+
+def extract_game_name(title):
+    """从归一化后的标题里抽出「游戏名【平台 大小】」。
+
+    举例：
+        '【更新/欧美SLG/动态/汉化版】药丸王 Pill King v0.37【PC+安卓 8.80G】 【C224444】'
+        → '药丸王 Pill King v0.37【PC+安卓 8.80G】'
+
+        '真·恋姬†无双～萌将传～ 【PC+安卓】【PC】【简体中文】'
+        → '真·恋姬†无双～萌将传～【PC+安卓】'
+
+    取不到平台括号时，只返回游戏名本体（不硬编造）。
+    """
+    if not title:
+        return ""
+    t = title.strip()
+
+    # 1) 摘掉结尾的【编号】（如 【C224444】 / 【16759】）
+    t = _TRAILING_ID_BRACKET_RE.sub('', t).strip()
+
+    # 2) 取出「平台 大小」括号内容，并从标题里删掉它
+    plat_size = ""
+    m = _GAME_SIZE_BRACKET_RE.search(t)
+    if m:
+        plat_size = f"【{re.sub(r'\\s+', ' ', m.group(0)[1:-1]).strip()}】"
+        t = (t[:m.start()] + t[m.end():]).strip()
+    else:
+        # 只有体积
+        m2 = _GAME_SIZE_ONLY_RE.search(t)
+        if m2:
+            plat_size = f"【{re.sub(r'\\s+', '', m2.group('size'))}】"
+            t = (t[:m2.start()] + t[m2.end():]).strip()
+        else:
+            # 只有平台（如 鲲 的 【PC+安卓】）
+            m3 = _GAME_PLAT_ONLY_RE.search(t)
+            if m3:
+                plat = _norm_plat(m3.group("plat"))
+                extra = (m3.group("extra") or "").strip()
+                head = f"{plat}{extra}" if (plat and extra) else (plat or extra)
+                plat_size = f"【{head}】" if head else ""
+                t = (t[:m3.start()] + t[m3.end():]).strip()
+
+    # 3) 剥掉开头的【标签】（分类/AI汉化/更新…）
+    t = _HEAD_BRACKET_RE.sub('', t).strip()
+
+    # 4) 清理尾部残留的其它括号（如末尾的【简体中文】【附全CG存档】）
+    #    只清"明显是标签/说明"的短括号，保留游戏名里的括号
+    for _ in range(4):
+        m = re.search(r'[【\[]([^【】\]]{1,12})[】\]]\s*$', t)
+        if not m:
+            break
+        inner = m.group(1).strip()
+        # 看起来像游戏名一部分的（含书名号/括号/较长的）就保留
+        if len(inner) > 10 or re.search(r'[《》〈〉「」]', inner):
+            break
+        t = t[:m.start()].strip()
+
+    # 5) 去掉首尾杂符
+    t = t.strip(' -–—·.。、,，/／')
+    if not t:
+        return ""
+    return f"{t}{plat_size}"
+
+
+def game_name_from_title(title):
+    """对外别名：给卡片/导出用，拿不到时回退到原标题。"""
+    name = extract_game_name(title)
+    return name or (title or "")

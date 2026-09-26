@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from database import sort_posts
+from parser import game_name_from_title
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 IMAGES_DIR = Path(__file__).parent.parent / "images"
@@ -205,6 +206,21 @@ body {{
 }}
 .btn-code:hover {{ background: var(--accent); border-color: var(--accent); border-style: solid; color: var(--on-accent); }}
 .btn-code.copied {{ background: var(--accent); border-color: var(--accent); border-style: solid; color: var(--on-accent); }}
+/* 游戏名按钮：实心强调色，点一下复制（= 网盘里的游戏名），比其它按钮更醒目 */
+.btn-game {{
+    cursor: pointer;
+    font-family: var(--font-ui);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    color: var(--accent);
+    font-weight: 600;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.btn-game:hover {{ background: var(--accent); border-color: var(--accent); color: var(--on-accent); }}
+.btn-game.copied {{ background: var(--accent); border-color: var(--accent); color: var(--on-accent); }}
 .card-footer {{
     margin-top: auto;
     padding: 10px 16px;
@@ -537,6 +553,7 @@ def generate_html(posts, title, filename):
         platform_tag = platform_tags.get(platform, platform_tags["unknown"])
 
         # 链接：优先用 download_items_json 多链接渲染，单网盘回退兼容字段
+        # 按钮顺序（用户 2026-09-26）：游戏名 → 百度网盘 → 原帖 → 解压码 → 作弊码
         links = []
         items = []
         raw_items = post.get("download_items_json")
@@ -545,6 +562,16 @@ def generate_html(posts, title, filename):
                 items = json.loads(raw_items) if isinstance(raw_items, str) else raw_items
             except Exception:
                 items = []
+
+        # 游戏名按钮：从标题抽「游戏名【平台 大小】」，点一下复制
+        # （用户 2026-09-26：这就是网盘里的游戏名，方便去网盘里找）
+        gname = game_name_from_title(post.get("title", ""))
+        if gname:
+            _gn = html_lib.escape(gname, quote=True)
+            links.append(
+                f'<button class="link-btn btn-game" data-copy="{_gn}" '
+                f'title="点击复制游戏名：{_gn}" onclick="copyText(this)">游戏名</button>'
+            )
 
         def _label_for(plat):
             if plat == "pc":
