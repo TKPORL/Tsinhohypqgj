@@ -980,18 +980,22 @@ def oversize_reason(title):
 #       剩下的中间部分就是游戏名，再把平台/大小括号拼回去。
 # ======================================================================
 
+# 平台标记的通用片段（PC / 安卓 / 双端 / 盖世 / joi / mtool / krkr / Winlator …）
+# 允许用 + ＋ & 、 / ／ 串联多个，如 PC/盖世/Winlator、PC+安卓
+_PLAT_TOKENS = (
+    r'(?:PC|pc|Pc|安卓|Android|android|双端|'
+    r'盖世|joiplay|joi|JOI|joiplay|mtool|MTool|mTool|吉里吉里|krkr|KRKR|Winlator|winlator)'
+)
+_PLAT_SEQ = _PLAT_TOKENS + r'(?:\s*[+＋&、/／]\s*' + _PLAT_TOKENS + r')*'
+
 # 尾部「平台 大小」括号（带大小），用于回拼
 _GAME_SIZE_BRACKET_RE = re.compile(
-    r'[【\[]\s*(?:PC|pc|安卓|Android|android|双端)'
-    r'(?:\s*[+＋&、]\s*(?:PC|pc|安卓|Android|android))*'
-    r'\s*(?:盖世|joi|JOI|joiplay|mtool|MTool|mTool|吉里吉里|krkr|KRKR)?'
+    r'[【\[]\s*' + _PLAT_SEQ +
     r'\s*[\s/／]\s*(?P<size>\d+\.?\d*\s*[GMgm][Bb]?)\s*[】\]]',
     re.IGNORECASE)
 # 纯平台括号（无大小），用于回拼（如 kup 的 【PC】）
 _GAME_PLAT_ONLY_RE = re.compile(
-    r'[【\[]\s*(?P<plat>(?:PC|pc|安卓|Android|android|双端)'
-    r'(?:\s*[+＋&、]\s*(?:PC|pc|安卓|Android|android))*)'
-    r'\s*(?P<extra>盖世|joi|JOI|joiplay|mtool|MTool|mTool|吉里吉里|krkr|KRKR)?\s*[】\]]',
+    r'[【\[]\s*(?P<plat>' + _PLAT_SEQ + r')\s*[】\]]',
     re.IGNORECASE)
 # 纯体积括号
 _GAME_SIZE_ONLY_RE = re.compile(
@@ -1000,6 +1004,45 @@ _GAME_SIZE_ONLY_RE = re.compile(
 _TRAILING_ID_BRACKET_RE = re.compile(r'\s*[【\[]\s*[A-Za-z]{0,2}\d{4,7}\s*[】\]]\s*$')
 # 版本号尾巴（v0.37 / 1.0.2 / 0.4.2b 等），提取游戏名时要留着
 _VERSION_TAIL_RE = re.compile(r'\s*(?:v|V|Ver\.?|版本)?\s*\d+(?:\.\d+)+[a-zA-Z]?\s*$')
+
+
+def _flatten_nested_brackets(t):
+    """把嵌套的方括号拆平：'【【A】B】【C】' → '【A】B 【C】'。
+
+    旧数据里出现过套娃（鲲站的附属说明被塞进平台括号里），
+    不拆平的话后面的正则只能匹配到内层、把中间文字丢掉。
+    """
+    if not t:
+        return t
+    out = []
+    i, n = 0, len(t)
+    while i < n:
+        ch = t[i]
+        if ch in "【[":
+            depth, j = 0, i
+            while j < n:
+                if t[j] in "【[":
+                    depth += 1
+                elif t[j] in "】]":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            inner = t[i + 1:j]
+            close = "】" if ch == "【" else "]"
+            if any(c in "【[" for c in inner):
+                out.append(_flatten_nested_brackets(inner))
+            else:
+                out.append(ch + inner + close)
+            # 嵌套括号拆平后，后面紧跟的非括号文字要保留
+            i = j + 1
+        else:
+            j = i
+            while j < n and t[j] not in "【[]":
+                j += 1
+            out.append(t[i:j])
+            i = j
+    return "".join(out)
 
 
 def extract_game_name(title):
@@ -1012,54 +1055,83 @@ def extract_game_name(title):
         '真·恋姬†无双～萌将传～ 【PC+安卓】【PC】【简体中文】'
         → '真·恋姬†无双～萌将传～【PC+安卓】'
 
+        '越界恋人!! 【【PC/盖世/Winlator】附全CG存档+特典】【PC+安卓】'
+        → '越界恋人!!【PC+安卓】'
+
     取不到平台括号时，只返回游戏名本体（不硬编造）。
     """
     if not title:
         return ""
     t = title.strip()
 
+    # 0) 先把套娃括号拆平（旧数据残留）
+    t = _flatten_nested_brackets(t)
+
     # 1) 摘掉结尾的【编号】（如 【C224444】 / 【16759】）
     t = _TRAILING_ID_BRACKET_RE.sub('', t).strip()
 
-    # 2) 取出「平台 大小」括号内容，并从标题里删掉它
+    # 2) 找出要回拼的平台标签。优先级：
+    #    (a) 「平台 大小」括号（信息最全）
+    #    (b) 只有体积的括号
+    #    (c) 最靠右的纯平台括号
+    #    找到后从标题里删掉它。
     plat_size = ""
+    picked = None  # (start, end, 标签文本)
+
     m = _GAME_SIZE_BRACKET_RE.search(t)
     if m:
-        plat_size = f"【{re.sub(r'\\s+', ' ', m.group(0)[1:-1]).strip()}】"
-        t = (t[:m.start()] + t[m.end():]).strip()
+        inner = re.sub(r'\s+', ' ', m.group(0)[1:-1]).strip()
+        picked = (m.start(), m.end(), f"【{inner}】")
     else:
-        # 只有体积
         m2 = _GAME_SIZE_ONLY_RE.search(t)
         if m2:
-            plat_size = f"【{re.sub(r'\\s+', '', m2.group('size'))}】"
-            t = (t[:m2.start()] + t[m2.end():]).strip()
+            picked = (m2.start(), m2.end(), f"【{re.sub(r'\\s+', '', m2.group('size'))}】")
         else:
-            # 只有平台（如 鲲 的 【PC+安卓】）
-            m3 = _GAME_PLAT_ONLY_RE.search(t)
-            if m3:
-                plat = _norm_plat(m3.group("plat"))
-                extra = (m3.group("extra") or "").strip()
-                head = f"{plat}{extra}" if (plat and extra) else (plat or extra)
-                plat_size = f"【{head}】" if head else ""
-                t = (t[:m3.start()] + t[m3.end():]).strip()
+            all_plat = list(_GAME_PLAT_ONLY_RE.finditer(t))
+            if all_plat:
+                last = all_plat[-1]
+                head = _norm_plat(last.group("plat"))
+                if head:
+                    picked = (last.start(), last.end(), f"【{head}】")
+
+    if picked:
+        plat_size = picked[2]
+        t = (t[:picked[0]] + t[picked[1]:]).strip()
+
+    # 2.2) 删掉「平台括号 + 紧跟的附属说明」整段。
+    #      例：'【PC/盖世/Winlator】附全CG存档+特典' 整段删掉（不是游戏名）。
+    t = re.sub(
+        r'[【\[]\s*' + _PLAT_SEQ + r'\s*[】\]]'
+        r'(?:\s*(?:附|附带|赠送|包含|含|带|内置)[^【\[]*)',
+        ' ', t)
+
+    # 2.5) 删掉剩下的所有「平台括号」（如 鲲 标题里同时有多个平台括号）
+    t = _GAME_PLAT_ONLY_RE.sub(' ', t)
+    t = _GAME_SIZE_BRACKET_RE.sub(' ', t)
+    t = _GAME_SIZE_ONLY_RE.sub(' ', t)
+    t = re.sub(r'\s+', ' ', t).strip()
 
     # 3) 剥掉开头的【标签】（分类/AI汉化/更新…）
     t = _HEAD_BRACKET_RE.sub('', t).strip()
 
-    # 4) 清理尾部残留的其它括号（如末尾的【简体中文】【附全CG存档】）
-    #    只清"明显是标签/说明"的短括号，保留游戏名里的括号
-    for _ in range(4):
-        m = re.search(r'[【\[]([^【】\]]{1,12})[】\]]\s*$', t)
+    # 4) 清理尾部残留的说明括号（如【简体中文】【附全CG存档+特典】）
+    #    只清"明显是标签/说明"的短括号，带书名号的（可能是游戏名）保留
+    for _ in range(6):
+        m = re.search(r'[【\[]([^【】\]]{1,20})[】\]]\s*$', t)
         if not m:
             break
         inner = m.group(1).strip()
-        # 看起来像游戏名一部分的（含书名号/括号/较长的）就保留
-        if len(inner) > 10 or re.search(r'[《》〈〉「」]', inner):
+        if re.search(r'[《》〈〉「」]', inner):
             break
         t = t[:m.start()].strip()
 
+    # 4.5) 清掉尾部孤零零的说明文字（如 "附全CG存档+特典"、"简体中文"）
+    t = re.sub(r'\s*(?:附|赠送|含|带)?[全]?CG存档[^ ]*$', '', t).strip()
+    t = re.sub(r'\s*[+＋]\s*特典\s*$', '', t).strip()
+    t = re.sub(r'\s*(?:简体中文|繁体中文|汉化版|步兵版)\s*$', '', t).strip()
+
     # 5) 去掉首尾杂符
-    t = t.strip(' -–—·.。、,，/／')
+    t = t.strip(' -–—·.。、,，/／+＋')
     if not t:
         return ""
     return f"{t}{plat_size}"
