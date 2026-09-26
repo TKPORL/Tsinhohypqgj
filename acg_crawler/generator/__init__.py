@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from database import sort_posts
-from parser import game_name_from_title
+from parser import game_name_from_title, bare_name_from_title
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 IMAGES_DIR = Path(__file__).parent.parent / "images"
@@ -221,6 +221,21 @@ body {{
 }}
 .btn-game:hover {{ background: var(--accent); border-color: var(--accent); color: var(--on-accent); }}
 .btn-game.copied {{ background: var(--accent); border-color: var(--accent); color: var(--on-accent); }}
+/* 复制名称按钮：纯游戏名（发帖表单「游戏名称」栏用），描边款和游戏名按钮区分 */
+.btn-bare {{
+    cursor: pointer;
+    font-family: var(--font-ui);
+    background: transparent;
+    border: 1px dashed var(--accent-line);
+    color: var(--accent);
+    font-weight: 600;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.btn-bare:hover {{ background: var(--accent-soft); border-style: solid; }}
+.btn-bare.copied {{ background: var(--accent); border-color: var(--accent); border-style: solid; color: var(--on-accent); }}
 .card-footer {{
     margin-top: auto;
     padding: 10px 16px;
@@ -570,7 +585,17 @@ def generate_html(posts, title, filename):
             _gn = html_lib.escape(gname, quote=True)
             links.append(
                 f'<button class="link-btn btn-game" data-copy="{_gn}" '
-                f'title="点击复制游戏名：{_gn}" onclick="copyText(this)">游戏名</button>'
+                f'title="点击复制网盘名：{_gn}" onclick="copyText(this)">游戏名</button>'
+            )
+
+        # 复制名称按钮：纯游戏名（不带平台/大小/编号），
+        # 发帖表单第一栏「游戏名称」直接粘贴用（用户 2026-09-26）
+        bname = bare_name_from_title(post.get("title", ""))
+        if bname:
+            _bn = html_lib.escape(bname, quote=True)
+            links.append(
+                f'<button class="link-btn btn-bare" data-copy="{_bn}" '
+                f'title="点击复制：{_bn}" onclick="copyText(this)">复制名称</button>'
             )
 
         def _label_for(plat):

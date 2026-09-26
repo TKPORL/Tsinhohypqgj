@@ -758,7 +758,13 @@ document.addEventListener("DOMContentLoaded", function() {
         // 点一下复制，正是网盘里的游戏名，方便去网盘里找（用户 2026-09-26）
         var gname = post.game_name || post.title || "";
         if (gname) {
-            linksHtml += '<button class="link-btn btn-game" data-copy="' + escapeHtml(gname) + '" title="点击复制游戏名：' + escapeHtml(gname) + '" onclick="copyText(this)">游戏名</button>';
+            linksHtml += '<button class="link-btn btn-game" data-copy="' + escapeHtml(gname) + '" title="点击复制网盘名：' + escapeHtml(gname) + '" onclick="copyText(this)">游戏名</button>';
+        }
+        // 复制名称按钮：纯游戏名（不带平台/大小/编号），
+        // 发帖表单第一栏「游戏名称」直接粘贴用（用户 2026-09-26）
+        var bname = post.bare_name || post.title || "";
+        if (bname) {
+            linksHtml += '<button class="link-btn btn-bare" data-copy="' + escapeHtml(bname) + '" title="点击复制：' + escapeHtml(bname) + '" onclick="copyText(this)">复制名称</button>';
         }
         // 多链接渲染：优先 download_items_json（按平台分别按钮）
         var items = [];

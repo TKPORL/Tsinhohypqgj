@@ -32,15 +32,29 @@ const EXPECT = ["游戏名", "百度网盘", "原帖", "解压码"];  // 作弊�
       const samples = [];
       for (const c of cards) {
         const links = c.querySelector(".card-links");
-        const title = c.querySelector(".card-title");
         const gameBtn = c.querySelector(".btn-game");
-        const btns = links ? [...links.children].map(x => (x.textContent.trim().match(/^(游戏名|百度网盘|原帖|解压码|作弊码)/) || [""])[0]).filter(Boolean) : [];
-        // 规则：游戏名 → 百度网盘 → 原帖 必须在前三；解压码/作弊码 在其后
-        const headOK = btns[0] === "游戏名" && btns[1] === "百度网盘" && (!btns[2] || btns[2] === "原帖");
-        if (!headOK) { bad++; if (badSamples.length < 2) badSamples.push(btns.join("→")); }
+        const bareBtn = c.querySelector(".btn-bare");
+        const btns = links ? [...links.children].map(x => (x.textContent.trim().match(/^(游戏名|复制名称|百度网盘|原帖|解压码|作弊码)/) || [""])[0]).filter(Boolean) : [];
+        // 规则：游戏名 → 复制名称 → 百度网盘 → 原帖 → (解压码/作弊码)
+        const headOK = btns[0] === "游戏名" && btns[1] === "复制名称" && btns[2] === "百度网盘" && (!btns[3] || btns[3] === "原帖");
+        // 纯名字不该带「平台括号」「爬虫编号」
+        // 但下面这些算合法，不判异常：
+        //   - 书名号内的括号（游戏副标题）『…【xx】…』
+        //   - 版本号括号 【v0.2.8d】/【v0.15】
+        //   - 名字里的中文短括号 [呉]、[美空編]
+        //   - 版本号尾巴 v0.0.9971
+        const bare = bareBtn ? (bareBtn.getAttribute("data-copy") || "") : "";
+        let bStripped = bare
+          .replace(/[『』《》〈〉][^『』《》〈〉]*[『』《》〈〉]/g, "")   // 书名号段
+          .replace(/[【\[]\s*[vV]?\d[\w.\-]*\s*[】\]]/g, "")          // 版本号括号
+          .replace(/[【\[]\s*[^【】\]]{1,4}\s*[】\]]/g, "")            // 名字里的短括号
+          .replace(/\s*[vV]?\d+(?:\.\d+)+\w*\s*$/g, "");              // 版本号尾巴
+        const bareOK = bare && !/【|\[/.test(bStripped);
+        if (!headOK || !bareOK) { bad++; if (badSamples.length < 3) badSamples.push(btns.join("→") + (bareOK ? "" : " | 名字含括号: " + bare)); }
         if (samples.length < 2) samples.push({
           btns: btns.join(" → "),
-          copy: gameBtn ? (gameBtn.getAttribute("data-copy") || "").slice(0, 55) : "(无)",
+          net: gameBtn ? (gameBtn.getAttribute("data-copy") || "").slice(0, 45) : "(无)",
+          bare: bare.slice(0, 45) || "(无)",
         });
       }
       return { total: cards.length, bad, badSamples, samples };
@@ -53,7 +67,8 @@ const EXPECT = ["游戏名", "百度网盘", "原帖", "解压码"];  // 作弊�
     console.log("\n== " + path.basename(f).slice(0, 40) + "  共 " + stat.total + " 张，异常 " + stat.bad + " 张");
     for (const s of stat.samples) {
       console.log("   按钮: " + s.btns);
-      console.log("   复制: " + s.copy);
+      console.log("   网盘名: " + s.net);
+      console.log("   纯名字: " + s.bare);
     }
     if (stat.badSamples.length) console.log("   !! 异常样例: " + stat.badSamples.join(" | "));
     await p.screenshot({ path: "_dev/_shots/exp_" + FILES.indexOf(f) + ".png" });

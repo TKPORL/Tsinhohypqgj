@@ -24,7 +24,7 @@ BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 
 from bs4 import BeautifulSoup  # noqa: E402
-from parser import game_name_from_title, normalize_title  # noqa: E402
+from parser import game_name_from_title, bare_name_from_title  # noqa: E402
 import generator  # noqa: E402
 
 APPLY = "--apply" in sys.argv
@@ -136,13 +136,21 @@ def render_new_card(d):
 
     import html as html_lib
     links = []
-    # 游戏名按钮
+    # 游戏名按钮（网盘名，带平台/大小）
     gname = game_name_from_title(d["title"])
     if gname:
         _gn = html_lib.escape(gname, quote=True)
         links.append(
             f'<button class="link-btn btn-game" data-copy="{_gn}" '
-            f'title="点击复制游戏名：{_gn}" onclick="copyText(this)">游戏名</button>'
+            f'title="点击复制网盘名：{_gn}" onclick="copyText(this)">游戏名</button>'
+        )
+    # 复制名称按钮（纯游戏名，发帖表单「游戏名称」栏用）
+    bname = bare_name_from_title(d["title"])
+    if bname:
+        _bn = html_lib.escape(bname, quote=True)
+        links.append(
+            f'<button class="link-btn btn-bare" data-copy="{_bn}" '
+            f'title="点击复制：{_bn}" onclick="copyText(this)">复制名称</button>'
         )
     # 百度网盘
     if d["baidu_link"]:

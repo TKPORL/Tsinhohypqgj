@@ -15,7 +15,7 @@ from database import (init_db, get_posts, get_post_count, delete_post, get_tasks
 from crawler import CrawlerEngine
 from crawler import SITE_NAMES
 from generator import export_posts, export_posts_filtered
-from parser import game_name_from_title
+from parser import game_name_from_title, bare_name_from_title
 
 app = Flask(__name__)
 config = load_config()
@@ -24,14 +24,21 @@ recovered_tasks = recover_interrupted_tasks()
 
 
 def _with_game_name(posts):
-    """给每条帖子补一个 game_name 字段（卡片上用「游戏名」按钮）。
+    """给每条帖子补 game_name / bare_name 两个字段（卡片上用两个按钮）。
 
-    用户 2026-09-26：从标题抽「游戏名【平台 大小】」，点一下复制，
-    这正是该游戏在百度网盘里的名字，方便去网盘里找。
+    用户 2026-09-26：
+      - game_name：「游戏名【平台 大小】」，点一下复制，
+        这正是该游戏在百度网盘里的名字，方便去网盘里找。
+      - bare_name：纯游戏名（不带平台/大小/编号），
+        发帖表单第一栏「游戏名称」直接粘贴用。
     """
     for p in posts or []:
-        if isinstance(p, dict) and not p.get("game_name"):
-            p["game_name"] = game_name_from_title(p.get("title", ""))
+        if isinstance(p, dict):
+            title = p.get("title", "")
+            if not p.get("game_name"):
+                p["game_name"] = game_name_from_title(title)
+            if not p.get("bare_name"):
+                p["bare_name"] = bare_name_from_title(title)
     return posts
 
 def _maybe_auto_backup():

@@ -981,21 +981,29 @@ def oversize_reason(title):
 # ======================================================================
 
 # 平台标记的通用片段（PC / 安卓 / 双端 / 盖世 / joi / mtool / krkr / Winlator …）
-# 允许用 + ＋ & 、 / ／ 串联多个，如 PC/盖世/Winlator、PC+安卓
+# 允许用 + ＋ & 、 / ／ 串联多个，也允许直接相连（PC+安卓盖世、PC/盖世/Winlator）
+# 容器/模拟器类词也会跟平台混在一起（直装/TY/VX/AOPA/mobox…）
 _PLAT_TOKENS = (
     r'(?:PC|pc|Pc|安卓|Android|android|双端|'
-    r'盖世|joiplay|joi|JOI|joiplay|mtool|MTool|mTool|吉里吉里|krkr|KRKR|Winlator|winlator)'
+    r'盖世|joiplay|joi|JOI|mtool|MTool|mTool|吉里吉里|krkr|KRKR|Winlator|winlator|'
+    r'直装|TY|ty|VX|vx|AOPA|aopa|mobox|Mobox|ExaGear|exagear|PC端|安卓端)'
 )
-_PLAT_SEQ = _PLAT_TOKENS + r'(?:\s*[+＋&、/／]\s*' + _PLAT_TOKENS + r')*'
+# 分隔符可选：既支持 "PC+安卓"，也支持 "PC+安卓盖世"（盖世直接贴上来）
+_PLAT_SEQ = _PLAT_TOKENS + r'(?:\s*(?:[+＋&、/／]\s*)?' + _PLAT_TOKENS + r')*'
+# 「必须含 PC 或 安卓」的宽松平台括号内容（用来清掉尾巴上残留的平台/容器标注）
+_PLAT_LOOSE = (
+    r'(?=[^【】\]]*(?:PC|pc|安卓|Android|android))'
+    r'[^【】\]]{1,40}'
+)
 
-# 尾部「平台 大小」括号（带大小），用于回拼
+# 尾部「平台 大小」括号（带大小），用于回拼；允许括号后紧跟纯数字编号
 _GAME_SIZE_BRACKET_RE = re.compile(
     r'[【\[]\s*' + _PLAT_SEQ +
     r'\s*[\s/／]\s*(?P<size>\d+\.?\d*\s*[GMgm][Bb]?)\s*[】\]]',
     re.IGNORECASE)
-# 纯平台括号（无大小），用于回拼（如 kup 的 【PC】）
+# 纯平台括号（无大小），用于回拼（如 kup 的 【PC】）；允许括号后紧跟纯数字编号
 _GAME_PLAT_ONLY_RE = re.compile(
-    r'[【\[]\s*(?P<plat>' + _PLAT_SEQ + r')\s*[】\]]',
+    r'[【\[]\s*(?P<plat>' + _PLAT_SEQ + r')\s*[】\]]\s*(?P<idonly>\d{2,8})?',
     re.IGNORECASE)
 # 纯体积括号
 _GAME_SIZE_ONLY_RE = re.compile(
@@ -1045,23 +1053,20 @@ def _flatten_nested_brackets(t):
     return "".join(out)
 
 
-def extract_game_name(title):
-    """从归一化后的标题里抽出「游戏名【平台 大小】」。
+def _split_game_name(title):
+    """把标题拆成 (游戏名主体, 平台标签)。平台标签不含括号。
 
     举例：
         '【更新/欧美SLG/动态/汉化版】药丸王 Pill King v0.37【PC+安卓 8.80G】 【C224444】'
-        → '药丸王 Pill King v0.37【PC+安卓 8.80G】'
+        → ('药丸王 Pill King v0.37', 'PC+安卓 8.80G')
 
-        '真·恋姬†无双～萌将传～ 【PC+安卓】【PC】【简体中文】'
-        → '真·恋姬†无双～萌将传～【PC+安卓】'
+        '傲娇少女与看不见的幽灵 なまいき娘と見えない幽霊 v2.7.1[PC+安卓盖世]15864'
+        → ('傲娇少女与看不见的幽灵 なまいき娘と見えない幽霊 v2.7.1', 'PC+安卓')
 
-        '越界恋人!! 【【PC/盖世/Winlator】附全CG存档+特典】【PC+安卓】'
-        → '越界恋人!!【PC+安卓】'
-
-    取不到平台括号时，只返回游戏名本体（不硬编造）。
+    取不到平台括号时，平台为空串（不硬编造）。
     """
     if not title:
-        return ""
+        return "", ""
     t = title.strip()
 
     # 0) 先把套娃括号拆平（旧数据残留）
@@ -1073,7 +1078,7 @@ def extract_game_name(title):
     # 2) 找出要回拼的平台标签。优先级：
     #    (a) 「平台 大小」括号（信息最全）
     #    (b) 只有体积的括号
-    #    (c) 最靠右的纯平台括号
+    #    (c) 平台括号里信息最全的那个（含安卓/双端 > 含后缀 > 纯 PC）
     #    找到后从标题里删掉它。
     plat_size = ""
     picked = None  # (start, end, 标签文本)
@@ -1089,10 +1094,22 @@ def extract_game_name(title):
         else:
             all_plat = list(_GAME_PLAT_ONLY_RE.finditer(t))
             if all_plat:
-                last = all_plat[-1]
-                head = _norm_plat(last.group("plat"))
+                # 评分：含"安卓/双端"最优先，其次含后缀(盖世/joi/…)，再次看原文长度
+                def _score(mo):
+                    raw = mo.group("plat") or ""
+                    s = 0
+                    if re.search(r'安卓|双端|android', raw, re.IGNORECASE):
+                        s += 100
+                    if re.search(r'盖世|joi|mtool|krkr|Winlator', raw, re.IGNORECASE):
+                        s += 10
+                    if re.search(r'pc', raw, re.IGNORECASE):
+                        s += 1
+                    s += min(len(raw), 20) / 100.0
+                    return s
+                best = max(all_plat, key=_score)
+                head = _norm_plat(best.group("plat"))
                 if head:
-                    picked = (last.start(), last.end(), f"【{head}】")
+                    picked = (best.start(), best.end(), f"【{head}】")
 
     if picked:
         plat_size = picked[2]
@@ -1105,39 +1122,114 @@ def extract_game_name(title):
         r'(?:\s*(?:附|附带|赠送|包含|含|带|内置)[^【\[]*)',
         ' ', t)
 
-    # 2.5) 删掉剩下的所有「平台括号」（如 鲲 标题里同时有多个平台括号）
+    # 2.5) 删掉剩下的所有「平台括号」
+    #      严格词表匹配的（【PC+安卓】）
     t = _GAME_PLAT_ONLY_RE.sub(' ', t)
     t = _GAME_SIZE_BRACKET_RE.sub(' ', t)
     t = _GAME_SIZE_ONLY_RE.sub(' ', t)
+    #      宽松匹配：括号里只要含 PC / 安卓 就当平台括号删
+    #      （处理 【PC/安卓直装/TY/盖世/Winlator】 这类词表没覆盖全的）
+    t = re.sub(r'[【\[]\s*' + _PLAT_LOOSE + r'\s*[】\]]', ' ', t)
     t = re.sub(r'\s+', ' ', t).strip()
 
-    # 3) 剥掉开头的【标签】（分类/AI汉化/更新…）
-    t = _HEAD_BRACKET_RE.sub('', t).strip()
-
-    # 4) 清理尾部残留的说明括号（如【简体中文】【附全CG存档+特典】）
-    #    只清"明显是标签/说明"的短括号，带书名号的（可能是游戏名）保留
-    for _ in range(6):
+    # 2.6) 循环剥掉「尾部垃圾」：裸编号 / +DLC / +存档 / 附属说明括号
+    #      只在结尾剥，避免误伤开头的分类标签
+    for _ in range(10):
+        before = t
+        t = t.strip()
+        # 尾部 '+xx' 附加项，如 '+全回想'、'+存档'、'+安卓kr'
+        t = re.sub(r'\s*[+＋]\s*[^+＋\s]{1,10}\s*$', '', t).strip()
+        # 尾部裸编号：行尾的 4~8 位数字（可多个），如 '…步兵版 14295 16375'、'…15051'
+        t = re.sub(r'(?<![0-9.])\s*\d{4,8}(?:\s+\d{3,8})*\s*$', '', t).strip()
+        # 尾部附加词：DLC / 存档 / 补丁 / 画廊
+        # 注意：不动 '汉化版/步兵版/去码版/官中版'（它们是正常版本后缀，要留着）
+        t = re.sub(r'[+＋]?\s*(?:DLC|dlc|全CG存档|CG存档|画廊mod|画廊|补丁|mod|MOD)\s*$', '', t).strip()
+        # 尾部说明性方括号，如【独角兽牧场】【简体中文】
+        # 但若括号内容像版本号（v0.2.8d）则保留
         m = re.search(r'[【\[]([^【】\]]{1,20})[】\]]\s*$', t)
+        if m and not re.search(r'[《》〈〉「」]', m.group(1)) \
+             and not re.fullmatch(r'\s*[vV]?\d[\w.\-]*\s*', m.group(1)):
+            t = t[:m.start()].strip()
+        t = t.strip(' -–—·.。、,，/／+＋')
+        # 尾部孤立的右括号（脏数据残留），如 '…【v0.15】 AI更新】'
+        if (t.count('】') + t.count(']')) > (t.count('【') + t.count('[')):
+            t = re.sub(r'[】\]]\s*$', '', t).strip()
+            continue
+        if t == before:
+            break
+    t = re.sub(r'\s+', ' ', t).strip()
+
+    # 2.8) 剥掉开头的「裸编号」，如 '15395[RPG/百合/纯爱]我们要好的时候…'
+    t = re.sub(r'^\s*\d{3,8}\s*(?=[【\[])', '', t).strip()
+
+    # 3) 剥掉开头的【标签】（分类/AI汉化/更新…）
+    #    形态 a：'新DLC'、'增添AZ' 这类前缀词，后面紧跟标签括号
+    for _ in range(3):
+        m = re.match(r'^\s*(?:新|最新|重磅|爆款)?(?:DLC|dlc|更新|官中|步兵|去码|汉化)\s*(?=[【\[])', t)
+        if m:
+            t = t[m.end():].strip()
+            continue
+        break
+    #    形态 a-2：任意短前缀（≤8字） + 标签括号（括号里含 / 分隔）
+    #             如 '增添AZ【日式SRPG/战斗H/调教扶她】 …'
+    m = re.match(r'^\s*([^\s【\[]{1,8})\s*[【\[]([^【】\]]{1,40})[】\]]', t)
+    if m and re.search(r'[/／|｜]', m.group(2)):
+        t = t[m.end():].strip()
+    #    形态 b：直接以标签括号开头，如 '[RPG/百合/纯爱]…'、'【更新/欧美SLG/动态/汉化版】…'
+    for _ in range(4):
+        m = re.match(r'^\s*[【\[]([^【】\]]{1,40})[】\]]', t)
         if not m:
             break
         inner = m.group(1).strip()
-        if re.search(r'[《》〈〉「」]', inner):
+        if re.search(r'[/／|｜]', inner) or _looks_like_tags(inner):
+            t = t[m.end():].strip()
+        else:
             break
-        t = t[:m.start()].strip()
-
-    # 4.5) 清掉尾部孤零零的说明文字（如 "附全CG存档+特典"、"简体中文"）
-    t = re.sub(r'\s*(?:附|赠送|含|带)?[全]?CG存档[^ ]*$', '', t).strip()
-    t = re.sub(r'\s*[+＋]\s*特典\s*$', '', t).strip()
-    t = re.sub(r'\s*(?:简体中文|繁体中文|汉化版|步兵版)\s*$', '', t).strip()
+    t = _HEAD_BRACKET_RE.sub('', t).strip()
 
     # 5) 去掉首尾杂符
     t = t.strip(' -–—·.。、,，/／+＋')
+    plat_clean = plat_size.strip('【】').strip()
     if not t:
+        return "", plat_clean
+    return t, plat_clean
+
+
+def extract_game_name(title):
+    """从标题里抽出「游戏名【平台 大小】」（网盘文件夹常用的完整写法）。
+
+    举例：
+        '【更新/欧美SLG/动态/汉化版】药丸王 Pill King v0.37【PC+安卓 8.80G】 【C224444】'
+        → '药丸王 Pill King v0.37【PC+安卓 8.80G】'
+
+        '傲娇少女与看不见的幽灵 なまいき娘と見えない幽霊 v2.7.1[PC+安卓盖世]15864'
+        → '傲娇少女与看不见的幽灵 なまいき娘と見えない幽霊 v2.7.1【PC+安卓】'
+
+    取不到平台括号时，只返回游戏名本体（不硬编造）。
+    """
+    body, plat = _split_game_name(title)
+    if not body:
         return ""
-    return f"{t}{plat_size}"
+    return f"{body}【{plat}】" if plat else body
+
+
+def extract_bare_name(title):
+    """只拿「纯游戏名」，不带平台/大小括号、不带编号。
+
+    例：'傲娇少女与看不见的幽灵 なまいき娘と見えない幽霊 v2.7.1[PC+安卓盖世]15864'
+        → '傲娇少女与看不见的幽灵 なまいき娘と見えない幽霊 v2.7.1'
+    """
+    body, _plat = _split_game_name(title)
+    return body
 
 
 def game_name_from_title(title):
-    """对外别名：给卡片/导出用，拿不到时回退到原标题。"""
+    """对外别名：给卡片/导出用，拿不到时回退到原标题（网盘名用）。"""
     name = extract_game_name(title)
+    return name or (title or "")
+
+
+def bare_name_from_title(title):
+    """对外别名：给卡片/导出用，拿不到时回退到原标题（纯名字用）。"""
+    name = extract_bare_name(title)
     return name or (title or "")
