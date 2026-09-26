@@ -17,6 +17,11 @@ acg_crawler/data/*.bak*
 acg_crawler/data/*.pre-multi
 acg_crawler/logs/
 
+# 数据库快照（12MB/份，由 tools/snapshot_db.py 生成，只存本地双盘 C: 和 D:）
+# 不进 git 的原因：会撑爆仓库；它的价值在于本地磁盘冗余，不是版本历史
+acg_crawler/data/_safe_backup/*.dbbak
+acg_crawler/data/.snap-tmp.dbbak
+
 # Agent / 工具本地目录
 .workbuddy-ai/
 .freebuff/

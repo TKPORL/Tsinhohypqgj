@@ -15,3 +15,6 @@ Thumbs.db
 
 # 无头浏览器截图（体积大，不入库）
 _dev/_shots/
+
+# 数据库快照临时文件（固定名，每轮覆盖）
+data/.snap-tmp.dbbak
