@@ -1,3 +1,70 @@
+/* ==========================================================================
+   失败兜底（2026-09-26）
+   背景：此前 21 个 fetch 里有 13 个没写失败分支。接口一报错（500 / 超时 /
+   工具被关掉），.then 不执行、内容不渲染，但面板已经切过去了 —— 结果就是
+   一片空白、不给任何提示，只能靠猜。
+   现在两层兜底：
+     ① 各加载函数失败时，在容器里写明「加载失败 + 原因」
+     ② 全局兜底条：任何没被捕获的脚本错误 / 请求失败都显示在页顶，绝不静默
+   ========================================================================== */
+
+function _esc(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// 把各种异常整理成一句人话
+function _failText(err, url) {
+    var msg;
+    if (err && err.name === "TypeError") {
+        // fetch 抛 TypeError 基本都是连不上本地服务
+        msg = "连不上本地服务（工具可能已关闭，重新双击 start.bat 即可）";
+    } else if (err && err.message) {
+        msg = err.message;
+    } else {
+        msg = String(err || "未知错误");
+    }
+    return "加载失败：" + msg + (url ? "　[" + url + "]" : "");
+}
+
+// 在容器里显示失败原因，替代空白
+function showPanelError(containerId, err, url) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = '<p class="load-error">' + _esc(_failText(err, url)) + '</p>';
+}
+
+// HTTP 状态码校验：4xx/5xx 直接抛错，避免把错误页当 JSON 解析
+function checkOk(resp) {
+    if (!resp.ok) {
+        throw new Error("服务端返回 " + resp.status + " " + resp.statusText);
+    }
+    return resp;
+}
+
+// 页顶兜底条：点一下关闭
+function showGlobalError(text) {
+    var bar = document.getElementById("globalErrorBar");
+    if (!bar) {
+        bar = document.createElement("div");
+        bar.id = "globalErrorBar";
+        bar.className = "global-error-bar";
+        bar.title = "点这条关闭";
+        bar.addEventListener("click", function () { bar.remove(); });
+        document.body.appendChild(bar);
+    }
+    bar.textContent = text + "　（点这条关闭）";
+}
+
+window.addEventListener("error", function (e) {
+    showGlobalError("页面脚本出错：" + (e.message || e.error || "未知"));
+});
+window.addEventListener("unhandledrejection", function (e) {
+    var r = e.reason;
+    showGlobalError("请求失败：" + ((r && r.message) ? r.message : String(r || "未知")));
+});
+
 document.addEventListener("DOMContentLoaded", function() {
     // 导航切换
     const navBtns = document.querySelectorAll(".nav-btn");
@@ -245,6 +312,7 @@ document.addEventListener("DOMContentLoaded", function() {
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(body)
         })
+        .then(checkOk)
         .then(r => r.json())
         .then(data => {
             if (data.status === "ok") {
@@ -259,6 +327,11 @@ document.addEventListener("DOMContentLoaded", function() {
             } else {
                 alert(data.message || "启动失败");
             }
+        })
+        .catch(err => {
+            startBtn.classList.remove("hidden");
+            stopBtn.classList.add("hidden");
+            showGlobalError(_failText(err, "/api/start_crawl"));
         });
     });
 
@@ -271,6 +344,8 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({discard: false})
+        }).catch(function(err) {
+            showGlobalError(_failText(err, "/api/confirm_cancel"));
         });
         userStopped = true;
         statusDot.classList.remove("running");
@@ -281,6 +356,7 @@ document.addEventListener("DOMContentLoaded", function() {
     function pollProgress() {
         pollTimer = setInterval(function() {
             fetch("/api/progress")
+                .then(checkOk)
                 .then(r => r.json())
                 .then(data => {
                     const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
@@ -325,6 +401,15 @@ document.addEventListener("DOMContentLoaded", function() {
                             loadPosts();
                         }, 500);
                     }
+                })
+                .catch(function(err) {
+                    // 进度接口连不上：停掉轮询，别让界面一直卡在"爬取中"
+                    clearInterval(pollTimer);
+                    startBtn.classList.remove("hidden");
+                    stopBtn.classList.add("hidden");
+                    statusDot.classList.remove("running");
+                    statusText.textContent = "连接中断";
+                    showGlobalError(_failText(err, "/api/progress"));
                 });
         }, 1000);
     }
@@ -349,12 +434,18 @@ document.addEventListener("DOMContentLoaded", function() {
             + "&q=" + encodeURIComponent(keyword)
             + (currentBatch ? "&batch=" + currentBatch : "")
             + "&limit=" + PAGE_SIZE + "&offset=" + currentOffset)
+            .then(checkOk)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 currentTotal = data.total || 0;
                 document.getElementById("resultCount").textContent = currentTotal;
                 renderGroups(data.groups);
                 renderPager();
+            })
+            .catch(function(err) {
+                document.getElementById("resultCount").textContent = "0";
+                document.getElementById("resultPager").innerHTML = "";
+                showPanelError("groupedResults", err, "/api/posts_grouped");
             });
     }
 
@@ -770,7 +861,10 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({id: id})
-        }).then(function() { loadPosts(); });
+        })
+        .then(checkOk)
+        .then(function() { loadPosts(); })
+        .catch(function(err) { showGlobalError(_failText(err, "/api/delete_post")); });
     };
 
     // 批量删除
@@ -781,10 +875,13 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({ids: Array.from(selectedIds)})
-        }).then(function() {
+        })
+        .then(checkOk)
+        .then(function() {
             selectedIds.clear();
             loadPosts();
-        });
+        })
+        .catch(function(err) { showGlobalError(_failText(err, "/api/batch_delete")); });
     });
 
     // 批量导出选中
@@ -828,6 +925,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // 加载历史
     function loadHistory() {
         fetch("/api/tasks")
+            .then(checkOk)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 var tbody = document.getElementById("historyBody");
@@ -868,6 +966,13 @@ document.addEventListener("DOMContentLoaded", function() {
                         + '<button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
                     tbody.appendChild(tr);
                 });
+            })
+            .catch(function(err) {
+                var tb = document.getElementById("historyBody");
+                if (tb) {
+                    tb.innerHTML = '<tr><td colspan="9"><p class="load-error">'
+                        + _esc(_failText(err, "/api/tasks")) + '</p></td></tr>';
+                }
             });
     }
 
@@ -899,8 +1004,11 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({id: id, delete_posts: true})
-        }).then(function() { loadHistory(); });
-    };;
+        })
+        .then(checkOk)
+        .then(function() { loadHistory(); })
+        .catch(function(err) { showGlobalError(_failText(err, "/api/delete_task")); });
+    };
 
     window.deleteAndRecrawl = function(id, sites) {
         var choice = confirm(
@@ -929,18 +1037,31 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function loadExportInfo() {
         fetch("/api/posts?limit=1")
+            .then(checkOk)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 document.getElementById("exportTotal").textContent = data.total;
+            })
+            .catch(function(err) {
+                document.getElementById("exportTotal").textContent = "—";
+                showGlobalError(_failText(err, "/api/posts"));
             });
         // 获取各平台数量
         fetch("/api/export_counts")
+            .then(checkOk)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 document.getElementById("countPc").textContent = data.pc || 0;
                 document.getElementById("countMixed").textContent = data.pc_android || data.mixed || 0;
                 var _cA = document.getElementById("countAndroid");
                 if (_cA) _cA.textContent = data.android || 0;
+            })
+            .catch(function(err) {
+                ["countPc", "countMixed", "countAndroid"].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el) el.textContent = "—";
+                });
+                showGlobalError(_failText(err, "/api/export_counts"));
             });
         // 加载爬取批次
         loadCrawlBatches();
@@ -948,6 +1069,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function loadCrawlBatches() {
         fetch("/api/crawl_batches")
+            .then(checkOk)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 var container = document.getElementById("batchList");
@@ -995,6 +1117,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     });
                     delContainer.innerHTML = dhtml;
                 }
+            })
+            .catch(function(err) {
+                showPanelError("batchList", err, "/api/crawl_batches");
+                showPanelError("batchDeleteList", err, "/api/crawl_batches");
             });
     }
 
@@ -1009,10 +1135,13 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({id: crawlId, delete_posts: true})
-        }).then(function() {
+        })
+        .then(checkOk)
+        .then(function() {
             loadCrawlBatches();
             loadExportInfo();
-        });
+        })
+        .catch(function(err) { showGlobalError(_failText(err, "/api/delete_task")); });
     };
 
     // 直接下载导出文件
@@ -1027,6 +1156,7 @@ document.addEventListener("DOMContentLoaded", function() {
         btn.textContent = "下载中...";
         btn.disabled = true;
         fetch("/api/redownload_images", {method: "POST"})
+            .then(checkOk)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 btn.textContent = "重新下载图片";
@@ -1036,6 +1166,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 } else {
                     alert("启动失败");
                 }
+            })
+            .catch(function(err) {
+                btn.textContent = "重新下载图片";
+                btn.disabled = false;
+                showGlobalError(_failText(err, "/api/redownload_images"));
             });
     };
 

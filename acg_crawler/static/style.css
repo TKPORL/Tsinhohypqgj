@@ -380,6 +380,33 @@ select { cursor: pointer; }
 
 .hidden { display: none !important; }
 
+/* ============ 失败兜底 ============
+   接口出错时在面板里显示原因，而不是留一片空白 */
+.load-error {
+    padding: 14px 16px;
+    background: rgba(224, 101, 95, 0.10);
+    border: 1px solid rgba(224, 101, 95, 0.45);
+    border-radius: var(--radius-input);
+    color: var(--danger);
+    font-size: 13px;
+    line-height: 1.65;
+    word-break: break-word;
+}
+/* 页顶兜底条：未捕获的脚本错误 / 请求失败，点一下关闭 */
+.global-error-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 9999;
+    padding: 10px 16px;
+    background: var(--danger);
+    color: #1a0c0a;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 2px 12px rgba(8, 4, 16, 0.5);
+}
+
 /* ============ 进度 / 统计 / 日志 ============ */
 .progress-section { margin: var(--space-24) 0; }
 .progress-header {
