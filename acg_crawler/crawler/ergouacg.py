@@ -142,13 +142,33 @@ class ErGouACGCrawler(BaseCrawler):
         time.sleep(random.uniform(3, 6))
 
     def _request(self, url, retries=3):
-        # 命中 429 时整请求退避重试：等 20s / 40s 再来
+        # 两种风控，都要退避重试：
+        #   ① 429 Too Many Requests —— 等 20s / 40s
+        #   ② 202 + SG-Captcha challenge —— 站方偶发弹验证码页（168 字节空壳）。
+        #      实测它不是封禁：紧接着再请求就是 200。但如果不识别，页面会被
+        #      当成"解析出 0 条"静默吞掉，表现为"这个站爬不到东西"。
         for attempt in range(retries):
+            # 自己发请求，才能拿到状态码和响应头判断验证码
             try:
-                return super()._request(url, retries=1)
+                self._check_pause()
+                self._delay()
+                resp = self.session.get(url, timeout=self.config.get("crawler", {}).get("timeout", 15))
+                if resp.status_code == 202 and "sgcaptcha" in resp.text.lower():
+                    if attempt < retries - 1:
+                        wait = 8 * (attempt + 1)
+                        print(f"[二狗ACG] 命中验证码页，{wait}s 后重试（{attempt + 1}/{retries}）")
+                        time.sleep(wait)
+                        continue
+                    raise RuntimeError("二狗ACG 持续返回验证码页，请稍后重试")
+                resp.raise_for_status()
+                self._reset_failures()
+                return resp
             except Exception as e:
                 if "429" in str(e) and attempt < retries - 1:
                     time.sleep(20 * (attempt + 1))
+                    continue
+                if attempt < retries - 1:
+                    self._throttle_on_failure()
                     continue
                 raise
 
