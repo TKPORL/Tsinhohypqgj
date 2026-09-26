@@ -40,3 +40,12 @@ PC+安卓下载 (1)/
 .DS_Store
 Thumbs.db
 nul
+
+# 一次性调试脚本（清出来过，别再堆在根目录）
+_patch*.py
+_probe*.py
+_dbg*.py
+_diag*.py
+_fixapp.py
+_peek.py
+_del_nul.py
