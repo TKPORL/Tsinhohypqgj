@@ -1,4 +1,14 @@
 <!DOCTYPE html>
+<!--
+  ★ 改本文件后必做：数一遍 div 开闭标签是否配平（开 与 闭 的数量要相等）。
+  历史上因为二狗站点行少了一个 div 闭合标签，导致 panel-result /
+  panel-history / panel-export / panel-cleanup 全部被嵌进 panel-crawl 内部 ——
+  panel-crawl 一 display:none，子孙节点即使有 .active 也被一起隐藏，表现为
+  "除爬取控制外点进去全是一片空白"（commit 98ebad0 修复）。
+  5 个 .panel 必须是同级兄弟，嵌套深度都应为 1。
+  提示：本注释里刻意不写 div 的闭合符号，否则用文本计数时会把自己算进去。
+  详见【项目全解】说明文档 §0.6。
+-->
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
