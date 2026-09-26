@@ -35,210 +35,211 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@300;400&family=Geist:wght@300;400;500&family=Roboto+Mono:wght@400;500&family=Noto+Serif+SC:wght@300;400&display=swap">
 <style>
+/* 深色 · 粉紫 —— 与主界面同一套视觉（2026-09-26） */
 :root {{
-    --iris: #847dff;
-    --cyan: #00b3dd;
-    --pale-iris: #d1c9ff;
-    --deep-iris: #4b49aa;
-    --orchid: #dd90d8;
-    --obsidian: #0f1011;
-    --abyss: #090a0b;
-    --graphite: #2e2e2e;
-    --steel: #3f4041;
-    --fog: #6a6b6b;
-    --ash: #9f9fa0;
-    --cloud: #f5f5f7;
-    --pure: #ffffff;
-    --void: #000000;
-    --danger: #c0574e;
-    --border: rgba(255, 255, 255, 0.08);
-    --border-accent: rgba(255, 255, 255, 0.2);
-    --hairline: rgba(255, 255, 255, 0.12);
-    --chip-bg: rgba(255, 255, 255, 0.12);
-    --chip-border: rgba(255, 255, 255, 0.15);
-    --font-display: 'Playfair Display', 'Noto Serif SC', Georgia, 'Songti SC', 'SimSun', serif;
-    --font-ui: 'Geist', 'Inter', 'Segoe UI', system-ui, 'Microsoft YaHei', sans-serif;
-    --font-mono: 'Roboto Mono', 'JetBrains Mono', Consolas, ui-monospace, monospace;
-    --radius-btn: 8px;
-    --radius-input: 8px;
-    --radius-card: 16px;
+    --bg-deep: #0b0a10;
+    --bg-canvas: #121119;
+    --bg-card: #1a1824;
+    --bg-card-hover: #221f2e;
+    --bg-inset: #0b0a10;
+    --text-primary: #f2eff7;
+    --text-muted: #a9a3b8;
+    --text-dim: #756f86;
+    --accent: #e056a0;
+    --accent-hover: #ef6fb1;
+    --accent-soft: rgba(224, 86, 160, 0.14);
+    --accent-line: rgba(224, 86, 160, 0.45);
+    --on-accent: #1a0f16;
+    --plat-pc: #8b5cf6;
+    --plat-mixed: #e056a0;
+    --plat-android: #f2765c;
+    --border: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --hairline: rgba(255, 255, 255, 0.10);
+    --chip-bg: rgba(255, 255, 255, 0.06);
+    --chip-border: rgba(255, 255, 255, 0.10);
+    --font-ui: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+    --font-num: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+    --radius-btn: 10px;
+    --radius-card: 14px;
+    --radius-input: 10px;
     --radius-pill: 9999px;
-    --ease: 0.2s ease;
+    --ease: 0.18s ease;
+    /* 兼容旧变量名 */
+    --fog: var(--text-dim);
+    --ash: var(--text-muted);
+    --cloud: var(--text-primary);
+    --pure: var(--text-primary);
+    --void: var(--bg-deep);
+    --abyss: var(--bg-deep);
+    --obsidian: var(--bg-canvas);
+    --graphite: var(--bg-card);
+    --steel: var(--bg-card-hover);
+    --cyan: var(--accent);
 }}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+html, body {{ overflow-x: clip; }}
 body {{
-    background: var(--obsidian);
-    color: var(--cloud);
+    background: var(--bg-canvas);
+    color: var(--text-primary);
     font-family: var(--font-ui);
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     padding-bottom: 80px;
 }}
 .header {{
     max-width: 1200px;
     margin: 0 auto;
-    padding: 48px 32px 24px;
+    padding: 40px 32px 20px;
     border-bottom: 1px solid var(--hairline);
 }}
 .header h1 {{
-    font-family: var(--font-display);
-    font-weight: 300;
-    font-size: 38px;
-    line-height: 0.9;
-    color: var(--pure);
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
 }}
 .meta {{
-    margin-top: 16px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.182em;
-    text-transform: uppercase;
-    color: var(--fog);
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
 }}
 .grid {{
     max-width: 1200px;
     margin: 0 auto;
-    padding: 32px;
+    padding: 24px 32px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 24px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    gap: 16px;
 }}
 .card {{
-    background: var(--graphite);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: var(--radius-card);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     transition: background var(--ease), border-color var(--ease);
 }}
-.card:hover {{ background: #333334; border-color: var(--border-accent); }}
+.card:hover {{ background: var(--bg-card-hover); border-color: var(--border-strong); }}
 .card-imgs {{
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 1px;
     background: rgba(255, 255, 255, 0.06);
     overflow: hidden;
     max-height: 250px;
 }}
-.card-imgs img {{ width: 100%; height: 100%; min-height: 110px; object-fit: cover; display: block; background: var(--abyss); cursor: zoom-in; }}
+.card-imgs img {{ width: 100%; height: 100%; min-height: 108px; object-fit: cover; display: block; background: var(--bg-deep); cursor: zoom-in; }}
 .card-imgs:has(img:nth-child(1):last-child) img {{ height: 280px; min-height: 280px; }}
 .no-img {{
     height: 160px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--abyss);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.182em;
-    text-transform: uppercase;
-    color: var(--fog);
+    background: var(--bg-deep);
+    font-size: 13px;
+    color: var(--text-dim);
 }}
 .card-body {{ padding: 16px; display: flex; flex-direction: column; flex: 1; }}
 .card-title {{
     font-size: 14px;
     line-height: 1.5;
-    color: var(--pure);
+    color: var(--text-primary);
     margin-bottom: 12px;
+    overflow-wrap: anywhere;
     cursor: pointer;
-    transition: opacity var(--ease);
+    transition: color var(--ease);
 }}
-.card-title:hover {{ opacity: 0.75; }}
+.card-title:hover {{ color: var(--accent); }}
 .card-meta {{
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     margin-bottom: 12px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--ash);
+    font-size: 12px;
+    color: var(--text-dim);
 }}
 .tag {{
     display: inline-flex;
     align-items: center;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    padding: 3px 10px;
+    font-size: 12px;
+    padding: 2px 10px;
     background: var(--chip-bg);
     border: 1px solid var(--chip-border);
     border-radius: var(--radius-pill);
-    color: var(--cloud);
+    color: var(--text-muted);
+    white-space: nowrap;
 }}
-.tag-android {{ color: var(--cloud); }}
-.tag-source {{ color: var(--ash); }}
+.tag-pc {{ color: var(--plat-pc); border-color: rgba(139, 92, 246, 0.35); }}
+.tag-android {{ color: var(--plat-android); border-color: rgba(242, 118, 92, 0.35); }}
+.tag-source {{ color: var(--text-muted); }}
 .card-links {{ display: flex; gap: 8px; flex-wrap: wrap; }}
 .link-btn {{
-    padding: 7px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    padding: 0 14px;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--accent-line);
     border-radius: var(--radius-btn);
     background: transparent;
-    color: var(--pure);
+    color: var(--accent);
     font-size: 12px;
     text-decoration: none;
     transition: background var(--ease), color var(--ease), border-color var(--ease);
 }}
-.link-btn:hover {{ background: var(--pure); color: var(--void); border-color: var(--pure); }}
-.link-source {{ border-color: var(--border); color: var(--ash); }}
+.link-btn:hover {{ background: var(--accent); border-color: var(--accent); color: var(--on-accent); }}
+.link-source {{ border-color: var(--border); color: var(--text-muted); }}
+.link-source:hover {{ background: var(--bg-card-hover); border-color: var(--border-strong); color: var(--text-primary); }}
 .card-footer {{
     margin-top: auto;
-    padding: 12px 16px;
-    background: rgba(0, 0, 0, 0.3);
+    padding: 10px 16px;
+    background: var(--bg-inset);
     border-top: 1px solid var(--border);
 }}
 .copy-text {{
     cursor: pointer;
-    padding: 5px 12px;
+    padding: 0 12px;
+    min-height: 30px;
     background: var(--chip-bg);
     border: 1px solid var(--chip-border);
     border-radius: var(--radius-pill);
-    color: var(--pure);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    transition: background var(--ease), border-color var(--ease);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    transition: background var(--ease), border-color var(--ease), color var(--ease);
 }}
-.copy-text::before {{ content: '⧉'; margin-right: 6px; opacity: 0.75; }}
-.copy-text:hover {{ background: rgba(255, 255, 255, 0.22); }}
+.copy-text:hover {{ background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }}
 .copy-text:active {{ transform: translateY(1px); }}
-.copy-text.copied {{ background: rgba(0, 179, 221, 0.2); border-color: var(--cyan); }}
+.copy-text.copied {{ background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }}
 .card-note {{
     margin-top: 12px;
     padding: 12px;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--bg-inset);
     border: 1px solid var(--border);
     border-radius: var(--radius-input);
     transition: border-color var(--ease), background var(--ease);
 }}
-.card-note:hover {{ border-color: var(--border-accent); }}
-.card-note.copied-note {{ border-color: var(--cyan); background: rgba(0, 179, 221, 0.06); }}
+.card-note:hover {{ border-color: var(--border-strong); }}
+.card-note.copied-note {{ border-color: var(--accent-line); background: var(--accent-soft); }}
 .note-head {{
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.182em;
-    text-transform: uppercase;
-    color: var(--fog);
+    font-size: 12px;
+    color: var(--text-dim);
     margin-bottom: 8px;
 }}
-.note-copy-hint {{ font-size: 10px; color: var(--fog); transition: color var(--ease); }}
-.card-note:hover .note-copy-hint {{ color: var(--cloud); }}
+.note-copy-hint {{ font-size: 12px; color: var(--text-dim); transition: color var(--ease); }}
+.card-note:hover .note-copy-hint {{ color: var(--text-muted); }}
 .note-body {{
     font-size: 12px;
-    line-height: 1.67;
-    color: var(--ash);
+    line-height: 1.7;
+    color: var(--text-muted);
     white-space: pre-wrap;
     word-break: break-word;
     overflow: hidden;
@@ -247,7 +248,7 @@ body {{
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
 }}
-.note-body:hover {{ color: var(--cloud); }}
+.note-body:hover {{ color: var(--text-primary); }}
 .note-body.expanded {{ -webkit-line-clamp: unset; display: block; }}
 .note-toggle {{
     display: inline-flex;
@@ -258,23 +259,21 @@ body {{
     background: none;
     border: 0;
     border-radius: 4px;
-    color: var(--ash);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    color: var(--text-muted);
+    font-family: var(--font-ui);
+    font-size: 12px;
     cursor: pointer;
     transition: color var(--ease);
 }}
-.note-toggle:hover {{ color: var(--pure); }}
-.note-toggle:focus-visible {{ outline: 1px solid var(--pure); outline-offset: 2px; }}
-.note-arrow {{ display: inline-block; font-size: 10px; transition: transform 0.22s ease; }}
+.note-toggle:hover {{ color: var(--accent); }}
+.note-toggle:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; }}
+.note-arrow {{ display: inline-block; font-size: 11px; transition: transform 0.22s ease; }}
 .note-toggle[aria-expanded="true"] .note-arrow {{ transform: rotate(180deg); }}
 .note-toggle[hidden] {{ display: none; }}
 .lightbox-overlay {{
     position: fixed;
     inset: 0;
-    background: rgba(9, 10, 11, 0.95);
+    background: rgba(11, 10, 16, 0.96);
     z-index: 2000;
     display: flex;
     align-items: center;
@@ -282,16 +281,16 @@ body {{
 }}
 .lightbox-img {{ max-width: 92vw; max-height: 88vh; border-radius: var(--radius-btn); border: 1px solid var(--border); }}
 .lightbox-close, .lightbox-nav {{
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid var(--border-accent);
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-pill);
-    color: var(--pure);
+    color: var(--text-primary);
     cursor: pointer;
     transition: background var(--ease);
 }}
-.lightbox-close {{ position: absolute; top: 24px; right: 24px; width: 40px; height: 40px; font-size: 18px; }}
+.lightbox-close {{ position: absolute; top: 24px; right: 24px; width: 44px; height: 44px; font-size: 18px; }}
 .lightbox-nav {{ position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; font-size: 18px; }}
-.lightbox-close:hover, .lightbox-nav:hover {{ background: rgba(255, 255, 255, 0.2); }}
+.lightbox-close:hover, .lightbox-nav:hover {{ background: rgba(255, 255, 255, 0.20); }}
 .lightbox-prev {{ left: 24px; }}
 .lightbox-next {{ right: 24px; }}
 .lightbox-counter {{
@@ -299,14 +298,13 @@ body {{
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    color: var(--ash);
+    font-size: 12px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }}
 @media (max-width: 640px) {{
-    .header {{ padding: 32px 16px 20px; }}
-    .header h1 {{ font-size: 26px; }}
+    .header {{ padding: 28px 16px 16px; }}
+    .header h1 {{ font-size: 20px; }}
     .grid {{ padding: 16px; grid-template-columns: 1fr; }}
 }}
 @media (prefers-reduced-motion: reduce) {{
@@ -317,7 +315,7 @@ body {{
 <body>
 <div class="header">
 <h1>{title}</h1>
-<div class="meta">生成时间: {gen_time} | 共 {count} 条资源</div>
+<div class="meta">生成时间 {gen_time} · 共 {count} 条资源</div>
 </div>
 <div class="grid">
 {cards}
@@ -516,7 +514,7 @@ def generate_html(posts, title, filename):
                 # 远程URL保留引用（离线时不可用）
                 imgs_html += f'<img src="{raw_img}" alt="" onerror="this.style.display=\'none\'">'
         if not imgs_html:
-            imgs_html = '<div class="no-img">No Image</div>'
+            imgs_html = '<div class="no-img">暂无图片</div>'
 
         # 平台标签
         platform = post.get("platform", "unknown")

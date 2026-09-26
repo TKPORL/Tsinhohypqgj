@@ -1,0 +1,276 @@
+<style>
+:root {{
+    --iris: #847dff;
+    --cyan: #00b3dd;
+    --pale-iris: #d1c9ff;
+    --deep-iris: #4b49aa;
+    --orchid: #dd90d8;
+    --obsidian: #0f1011;
+    --abyss: #090a0b;
+    --graphite: #2e2e2e;
+    --steel: #3f4041;
+    --fog: #6a6b6b;
+    --ash: #9f9fa0;
+    --cloud: #f5f5f7;
+    --pure: #ffffff;
+    --void: #000000;
+    --danger: #c0574e;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-accent: rgba(255, 255, 255, 0.2);
+    --hairline: rgba(255, 255, 255, 0.12);
+    --chip-bg: rgba(255, 255, 255, 0.12);
+    --chip-border: rgba(255, 255, 255, 0.15);
+    --font-display: 'Playfair Display', 'Noto Serif SC', Georgia, 'Songti SC', 'SimSun', serif;
+    --font-ui: 'Geist', 'Inter', 'Segoe UI', system-ui, 'Microsoft YaHei', sans-serif;
+    --font-mono: 'Roboto Mono', 'JetBrains Mono', Consolas, ui-monospace, monospace;
+    --radius-btn: 8px;
+    --radius-input: 8px;
+    --radius-card: 16px;
+    --radius-pill: 9999px;
+    --ease: 0.2s ease;
+}}
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{
+    background: var(--obsidian);
+    color: var(--cloud);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
+}}
+.header {{
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 32px 24px;
+    border-bottom: 1px solid var(--hairline);
+}}
+.header h1 {{
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: 38px;
+    line-height: 0.9;
+    color: var(--pure);
+}}
+.meta {{
+    margin-top: 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.182em;
+    text-transform: uppercase;
+    color: var(--fog);
+}}
+.grid {{
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+}}
+.card {{
+    background: var(--graphite);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: background var(--ease), border-color var(--ease);
+}}
+.card:hover {{ background: #333334; border-color: var(--border-accent); }}
+.card-imgs {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    max-height: 250px;
+}}
+.card-imgs img {{ width: 100%; height: 100%; min-height: 110px; object-fit: cover; display: block; background: var(--abyss); cursor: zoom-in; }}
+.card-imgs:has(img:nth-child(1):last-child) img {{ height: 280px; min-height: 280px; }}
+.no-img {{
+    height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--abyss);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.182em;
+    text-transform: uppercase;
+    color: var(--fog);
+}}
+.card-body {{ padding: 16px; display: flex; flex-direction: column; flex: 1; }}
+.card-title {{
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--pure);
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: opacity var(--ease);
+}}
+.card-title:hover {{ opacity: 0.75; }}
+.card-meta {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ash);
+}}
+.tag {{
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    background: var(--chip-bg);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-pill);
+    color: var(--cloud);
+}}
+.tag-android {{ color: var(--cloud); }}
+.tag-source {{ color: var(--ash); }}
+.card-links {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+.link-btn {{
+    padding: 7px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-btn);
+    background: transparent;
+    color: var(--pure);
+    font-size: 12px;
+    text-decoration: none;
+    transition: background var(--ease), color var(--ease), border-color var(--ease);
+}}
+.link-btn:hover {{ background: var(--pure); color: var(--void); border-color: var(--pure); }}
+.link-source {{ border-color: var(--border); color: var(--ash); }}
+.card-footer {{
+    margin-top: auto;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid var(--border);
+}}
+.copy-text {{
+    cursor: pointer;
+    padding: 5px 12px;
+    background: var(--chip-bg);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-pill);
+    color: var(--pure);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: background var(--ease), border-color var(--ease);
+}}
+.copy-text::before {{ content: '⧉'; margin-right: 6px; opacity: 0.75; }}
+.copy-text:hover {{ background: rgba(255, 255, 255, 0.22); }}
+.copy-text:active {{ transform: translateY(1px); }}
+.copy-text.copied {{ background: rgba(0, 179, 221, 0.2); border-color: var(--cyan); }}
+.card-note {{
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    transition: border-color var(--ease), background var(--ease);
+}}
+.card-note:hover {{ border-color: var(--border-accent); }}
+.card-note.copied-note {{ border-color: var(--cyan); background: rgba(0, 179, 221, 0.06); }}
+.note-head {{
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.182em;
+    text-transform: uppercase;
+    color: var(--fog);
+    margin-bottom: 8px;
+}}
+.note-copy-hint {{ font-size: 10px; color: var(--fog); transition: color var(--ease); }}
+.card-note:hover .note-copy-hint {{ color: var(--cloud); }}
+.note-body {{
+    font-size: 12px;
+    line-height: 1.67;
+    color: var(--ash);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: hidden;
+    cursor: pointer;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}}
+.note-body:hover {{ color: var(--cloud); }}
+.note-body.expanded {{ -webkit-line-clamp: unset; display: block; }}
+.note-toggle {{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 2px 4px;
+    background: none;
+    border: 0;
+    border-radius: 4px;
+    color: var(--ash);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color var(--ease);
+}}
+.note-toggle:hover {{ color: var(--pure); }}
+.note-toggle:focus-visible {{ outline: 1px solid var(--pure); outline-offset: 2px; }}
+.note-arrow {{ display: inline-block; font-size: 10px; transition: transform 0.22s ease; }}
+.note-toggle[aria-expanded="true"] .note-arrow {{ transform: rotate(180deg); }}
+.note-toggle[hidden] {{ display: none; }}
+.lightbox-overlay {{
+    position: fixed;
+    inset: 0;
+    background: rgba(9, 10, 11, 0.95);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}}
+.lightbox-img {{ max-width: 92vw; max-height: 88vh; border-radius: var(--radius-btn); border: 1px solid var(--border); }}
+.lightbox-close, .lightbox-nav {{
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--radius-pill);
+    color: var(--pure);
+    cursor: pointer;
+    transition: background var(--ease);
+}}
+.lightbox-close {{ position: absolute; top: 24px; right: 24px; width: 40px; height: 40px; font-size: 18px; }}
+.lightbox-nav {{ position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; font-size: 18px; }}
+.lightbox-close:hover, .lightbox-nav:hover {{ background: rgba(255, 255, 255, 0.2); }}
+.lightbox-prev {{ left: 24px; }}
+.lightbox-next {{ right: 24px; }}
+.lightbox-counter {{
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--ash);
+}}
+@media (max-width: 640px) {{
+    .header {{ padding: 32px 16px 20px; }}
+    .header h1 {{ font-size: 26px; }}
+    .grid {{ padding: 16px; grid-template-columns: 1fr; }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+    * {{ transition: none !important; }}
+}}
+</style>

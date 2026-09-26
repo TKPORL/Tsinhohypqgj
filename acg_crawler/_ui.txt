@@ -1,0 +1,14 @@
+No active sessions
+✓ Done
+✓ ACG黄油资源聚合爬取工具
+  http://127.0.0.1:5099/
+✓ Done
+✓ Done
+✓ Done
+✓ Screenshot saved to _ui_crawl.png
+✓ Done
+✓ Done
+✓ Screenshot saved to _ui_result.png
+✓ Done
+✓ Done
+✓ Screenshot saved to _ui_mobile.png

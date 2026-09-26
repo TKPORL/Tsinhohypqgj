@@ -12,7 +12,10 @@ document.addEventListener("DOMContentLoaded", function() {
             if (this.dataset.panel === "result") loadPosts();
             if (this.dataset.panel === "history") loadHistory();
             if (this.dataset.panel === "export") loadExportInfo();
-            if (this.dataset.panel === "cleanup") loadCleanupInfo();
+            if (this.dataset.panel === "cleanup") { loadCleanupInfo(); loadCrawlBatches(); }
+            // 批量选择条只属于「爬取结果」，切走时收起来
+            var bb = document.getElementById("batchBar");
+            if (bb) bb.classList.toggle("active", this.dataset.panel === "result" && selectedIds.size > 0);
         });
     });
 
@@ -74,6 +77,79 @@ document.addEventListener("DOMContentLoaded", function() {
         failed: "失败",
         cancelled: "已停止"
     };
+
+    // ========== 日期默认值：最近 7 天 ==========
+    // 以前写死在 HTML 里，过几天打开就是过期区间，这里按当天算
+    (function initDateRange() {
+        function fmt(d) {
+            return d.getFullYear() + "-" +
+                String(d.getMonth() + 1).padStart(2, "0") + "-" +
+                String(d.getDate()).padStart(2, "0");
+        }
+        var today = new Date();
+        var weekAgo = new Date(today.getTime() - 6 * 86400000);
+        var s = document.getElementById("startDate");
+        var e = document.getElementById("endDate");
+        if (s && !s.value) s.value = fmt(weekAgo);
+        if (e && !e.value) e.value = fmt(today);
+    })();
+
+    // ========== 站点列表：从后端拿，站点增减只改 config.yaml ==========
+    var SITE_FALLBACK = [
+        {key: "acgyxj", name: "ACG游戏姬"},
+        {key: "acgrx", name: "萌幻ACG"},
+        {key: "acgll", name: "ACG图书馆"},
+        {key: "acgjlb", name: "ACG俱乐部"},
+        {key: "kungal", name: "鲲Galgame"},
+        {key: "2gou", name: "二狗ACG"}
+    ];
+    // 各站默认结束页：二狗更新快、内容少，默认只爬 1 页
+    var SITE_DEFAULT_END = {"2gou": 1};
+
+    function renderSiteList(sites) {
+        var box = document.getElementById("targetSites");
+        if (!box) return;
+        box.innerHTML = "";
+        sites.forEach(function(s) {
+            SITE_NAMES[s.key] = s.name;
+            var endPage = SITE_DEFAULT_END[s.key] || 10;
+            var row = document.createElement("div");
+            row.className = "site-page-row";
+            row.innerHTML =
+                '<label class="checkbox-label"><input type="checkbox" value="' + s.key + '" checked><span>' + s.name + '</span></label>' +
+                '<span class="site-page-range">' +
+                '<input type="number" class="site-start" value="1" min="1" max="999" title="起始页">' +
+                '<span>至</span>' +
+                '<input type="number" class="site-end" value="' + endPage + '" min="1" max="999" title="结束页">' +
+                '<span>页</span>' +
+                '</span>';
+            box.appendChild(row);
+        });
+    }
+
+    fetch("/api/sites")
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var list = (data && data.sites && data.sites.length) ? data.sites : SITE_FALLBACK;
+            renderSiteList(list);
+        })
+        .catch(function() { renderSiteList(SITE_FALLBACK); });
+
+    // ========== 总览：资源总数 / 图片占用 / 最近爬取 ==========
+    function loadOverview() {
+        fetch("/api/stats")
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var total = document.getElementById("ovTotal");
+                if (total) total.textContent = (d.total != null) ? d.total : "—";
+                var disk = document.getElementById("ovDisk");
+                if (disk) disk.textContent = d.images_ready ? formatSize(d.images_size || 0) : "统计中…";
+                var last = document.getElementById("ovLast");
+                if (last) last.textContent = d.last_crawl ? String(d.last_crawl).replace("T", " ").substring(0, 16) : "还没有";
+            })
+            .catch(function() {});
+    }
+    loadOverview();
 
     function renderSitePanels(siteStates, siteLogs) {
         if (!sitePanelsContainer || !siteStates) return;
@@ -239,6 +315,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         statusDot.classList.remove("running");
                         statusText.textContent = userStopped ? "已停止" : "完成";
                         userStopped = false;
+                        loadOverview();   // 爬完刷新总览
                         // 自动跳转到结果页
                         setTimeout(function() {
                             document.querySelectorAll(".nav-btn").forEach(function(b) { b.classList.remove("active"); });
@@ -379,6 +456,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 + '<span class="date-count">' + group.total + ' 条</span>'
                 + '<div class="group-actions"><button class="btn btn-sm btn-primary" onclick="downloadGroup(' + idx + ', this)" title="只导出这个分组的数据">下载本组</button>'
                 + '<button class="btn btn-sm toggle-btn" onclick="toggleGroup(' + idx + ')">展开</button></div>';
+            // 整条都能点开/收起（按钮自己处理，不重复触发）
+            headerEl.addEventListener("click", function(e) {
+                if (e.target.closest(".group-actions")) return;
+                toggleGroup(idx);
+            });
             groupEl.appendChild(headerEl);
             groupEl.dataset.sources = sourcesInGroup.join(',');
 
@@ -770,10 +852,20 @@ document.addEventListener("DOMContentLoaded", function() {
                     // 删除并重爬按钮：非运行中、非等待中的任务都可操作
                     var recrawlBtn = '';
                     if (task.status !== 'running' && task.status !== 'pending') {
-                        recrawlBtn = '<button class="btn btn-sm" style="background:#f0ad4e;color:#fff;margin-right:4px" onclick="deleteAndRecrawl(' + task.id + ', \'' + (task.sites || '') + '\')">删除数据并重爬</button>';
+                        recrawlBtn = '<button class="btn btn-sm btn-recrawl" onclick="deleteAndRecrawl(' + task.id + ', \'' + (task.sites || '') + '\')">删除数据并重爬</button>';
                     }
 
-                    tr.innerHTML = '<td>' + task.id + '</td><td>' + (task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期') + '</td><td>' + (task.sites || '') + '</td><td>' + statusBadge + '</td><td>' + task.success_posts + '</td><td>' + task.skipped_posts + '</td><td>' + task.error_posts + '</td><td>' + (task.created_at || '') + '</td><td><button class="btn btn-sm" onclick="viewBatchData(' + task.id + ')">查看数据</button>' + dlBtns + recrawlBtn + '<button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
+                    tr.innerHTML = '<td>' + task.id + '</td>'
+                        + '<td class="col-type">' + (task.task_type === 'by_page' ? '按页码' : task.task_type === 'incremental' ? '增量' : '按日期') + '</td>'
+                        + '<td>' + (task.sites || '') + '</td>'
+                        + '<td>' + statusBadge + '</td>'
+                        + '<td>' + task.success_posts + '</td>'
+                        + '<td class="col-skipped">' + task.skipped_posts + '</td>'
+                        + '<td class="col-error">' + task.error_posts + '</td>'
+                        + '<td>' + (task.created_at || '') + '</td>'
+                        + '<td><button class="btn btn-sm" onclick="viewBatchData(' + task.id + ')">查看数据</button>'
+                        + dlBtns + recrawlBtn
+                        + '<button class="btn btn-sm btn-danger" onclick="deleteTask(' + task.id + ')">删除</button></td>';
                     tbody.appendChild(tr);
                 });
             });

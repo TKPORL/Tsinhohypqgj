@@ -62,6 +62,31 @@ IMAGES_DIR = Path(__file__).parent / "images"
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_RETENTION_DAYS = 30
 
+# 图片目录占用统计：2 万+ 文件，不能在请求里现算，启动时后台线程算一次缓存住
+_image_stats_cache = {"size": None, "count": None, "ready": False}
+
+
+def _compute_image_stats():
+    total = 0
+    count = 0
+    try:
+        if IMAGES_DIR.exists():
+            for root, _, files in os.walk(IMAGES_DIR):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, f))
+                        count += 1
+                    except OSError:
+                        pass
+    except Exception:
+        pass
+    _image_stats_cache["size"] = total
+    _image_stats_cache["count"] = count
+    _image_stats_cache["ready"] = True
+
+
+threading.Thread(target=_compute_image_stats, daemon=True).start()
+
 
 def _write_log_file(entry):
     """把日志条目追加到 logs/{YYYY-MM-DD}.log，超 30 天自动清理"""
@@ -270,6 +295,40 @@ def api_proxy_image():
         return Response(resp.iter_content(8192), content_type=content_type)
     except Exception:
         return "", 404
+
+@app.route("/api/sites")
+def api_sites():
+    """启用的站点列表 —— 以 crawler.SITE_NAMES 为准（config.yaml 的 sites 段只覆盖了 4 站），
+    config.yaml 里配了 enabled: false 的站会被过滤掉。"""
+    site_cfg = config.get("sites") or {}
+    sites = []
+    for key, name in SITE_NAMES.items():
+        cfg = site_cfg.get(key)
+        if isinstance(cfg, dict) and not cfg.get("enabled", True):
+            continue
+        sites.append({"key": key, "name": name})
+    return jsonify({"sites": sites})
+
+
+@app.route("/api/stats")
+def api_stats():
+    """总览：资源总数 / 图片占用 / 最近一次爬取时间"""
+    last_time = ""
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT MAX(created_at) AS t FROM tasks").fetchone()
+            if row and row["t"]:
+                last_time = row["t"]
+    except Exception:
+        pass
+    return jsonify({
+        "total": get_post_count(),
+        "images_size": _image_stats_cache["size"],
+        "images_count": _image_stats_cache["count"],
+        "images_ready": _image_stats_cache["ready"],
+        "last_crawl": last_time,
+    })
+
 
 @app.route("/api/posts")
 def api_posts():

@@ -1,0 +1,11 @@
+No active sessions
+✓ Done
+✓ ACG 资源 · 深色画廊
+  file:///D:/Tsinho%E6%96%87%E4%BB%B6%E5%A4%B9/%E6%96%B0Tsinho%E9%BB%84%E6%B2%B9%E7%88%AC%E5%8F%96%E5%B7%A5%E5%85%B7/acg_crawler/output/style-demo/style-demo.html
+✓ Done
+✓ Done
+✓ Done
+✓ Screenshot saved to _ex_desktop.png
+✓ Done
+✓ Done
+✓ Screenshot saved to _ex_mobile.png

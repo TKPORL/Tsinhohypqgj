@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ACG黄油资源聚合爬取工具</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@300;400&family=Geist:wght@300;400;500&family=Roboto+Mono:wght@400;500&family=Noto+Serif+SC:wght@300;400&display=swap">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -33,27 +37,65 @@
                     <h2>爬取控制</h2>
                 </div>
 
-                <div class="overview" id="overview">
-                    <div class="ov-item">
-                        <span class="ov-key">资源总数</span>
-                        <strong class="ov-val" id="ovTotal">—</strong>
-                    </div>
-                    <div class="ov-item">
-                        <span class="ov-key">图片占用</span>
-                        <strong class="ov-val" id="ovDisk">—</strong>
-                    </div>
-                    <div class="ov-item">
-                        <span class="ov-key">最近爬取</span>
-                        <strong class="ov-val is-text" id="ovLast">—</strong>
-                    </div>
-                </div>
-
                 <div class="form-group">
                     <label>目标站点</label>
                     <div class="site-page-list" id="targetSites">
-                        <p class="loading-text">加载站点中...</p>
+                        <div class="site-page-row">
+                            <label class="checkbox-label"><input type="checkbox" value="acgyxj" checked> ACG游戏姬</label>
+                            <span class="site-page-range">
+                                <input type="number" class="site-start" value="1" min="1" max="999" title="起始页">
+                                <span>至</span>
+                                <input type="number" class="site-end" value="10" min="1" max="999" title="结束页">
+                                <span>页</span>
+                            </span>
+                        </div>
+                        <div class="site-page-row">
+                            <label class="checkbox-label"><input type="checkbox" value="acgrx" checked> 萌幻ACG</label>
+                            <span class="site-page-range">
+                                <input type="number" class="site-start" value="1" min="1" max="999" title="起始页">
+                                <span>至</span>
+                                <input type="number" class="site-end" value="10" min="1" max="999" title="结束页">
+                                <span>页</span>
+                            </span>
+                        </div>
+                        <div class="site-page-row">
+                            <label class="checkbox-label"><input type="checkbox" value="acgll" checked> ACG图书馆</label>
+                            <span class="site-page-range">
+                                <input type="number" class="site-start" value="1" min="1" max="999" title="起始页">
+                                <span>至</span>
+                                <input type="number" class="site-end" value="10" min="1" max="999" title="结束页">
+                                <span>页</span>
+                            </span>
+                        </div>
+                        <div class="site-page-row">
+                            <label class="checkbox-label"><input type="checkbox" value="acgjlb" checked> ACG俱乐部</label>
+                            <span class="site-page-range">
+                                <input type="number" class="site-start" value="1" min="1" max="999" title="起始页">
+                                <span>至</span>
+                                <input type="number" class="site-end" value="10" min="1" max="999" title="结束页">
+                                <span>页</span>
+                            </span>
+                        </div>
+                        <div class="site-page-row">
+                            <label class="checkbox-label"><input type="checkbox" value="kungal" checked> 鲲Galgame</label>
+                            <span class="site-page-range">
+                                <input type="number" class="site-start" value="1" min="1" max="999" title="起始页">
+                                <span>至</span>
+                                <input type="number" class="site-end" value="10" min="1" max="999" title="结束页">
+                                <span>页</span>
+                            </span>
+                        </div>
+                        <div class="site-page-row">
+                            <label class="checkbox-label"><input type="checkbox" value="2gou" checked> 二狗ACG</label>
+                            <span class="site-page-range">
+                                <input type="number" class="site-start" value="1" min="1" max="999" title="起始页">
+                                <span>至</span>
+                                <input type="number" class="site-end" value="1" min="1" max="999" title="结束页">
+                                <span>页</span>
+                            </span>
+                        </div>
                     </div>
-                    <p class="help-text" id="siteHelp">勾选哪个站点就爬哪个，页码范围只对勾选的站点生效。各站更新速度不同，把更新慢的站点结束页调小，就不会翻到旧内容。</p>
+                    <p class="help-text" id="siteHelp">勾选哪个站点就爬哪个，页码只对勾选的站点生效。各站更新速度不同，把更新慢的站点结束页调小，就不会翻到旧内容。</p>
                 </div>
 
                 <div class="form-group">
@@ -67,7 +109,7 @@
 
                 <div class="form-group">
                     <label>速度档位</label>
-                    <div class="radio-group">
+                    <div class="radio-group speed-group">
                         <label class="radio-label"><input type="radio" name="speedMode" value="stable"> 稳定</label>
                         <label class="radio-label"><input type="radio" name="speedMode" value="balanced" checked> 平衡</label>
                         <label class="radio-label"><input type="radio" name="speedMode" value="fast"> 快速</label>
@@ -85,9 +127,9 @@
                 <div class="form-group hidden" id="dateGroup">
                     <label>日期范围</label>
                     <div class="date-inputs">
-                        <input type="date" id="startDate">
+                        <input type="date" id="startDate" value="2026-09-01">
                         <span>至</span>
-                        <input type="date" id="endDate">
+                        <input type="date" id="endDate" value="2026-09-06">
                     </div>
                 </div>
 
@@ -98,6 +140,7 @@
                 <div class="form-actions">
                     <button class="btn btn-primary" id="startBtn">开始爬取</button>
                     <button class="btn btn-danger hidden" id="stopBtn">停止爬取</button>
+                    <button class="btn btn-sm" id="redownloadBtn" onclick="redownloadImages()">重新下载图片</button>
                 </div>
 
                 <div class="progress-section hidden" id="progressSection">
@@ -126,11 +169,7 @@
             <div class="panel" id="panel-result">
                 <div class="panel-header">
                     <h2>爬取结果</h2>
-                    <span class="result-count">共 <strong id="resultCount">0</strong> 条</span>
-                </div>
-
-                <div class="result-toolbar">
-                    <div class="toolbar-row">
+                    <div class="result-filters">
                         <select id="filterSource">
                             <option value="all">全部来源</option>
                             <option value="ACG游戏姬">ACG游戏姬</option>
@@ -141,22 +180,25 @@
                             <option value="二狗ACG">二狗ACG</option>
                         </select>
                         <input type="search" id="searchInput" placeholder="搜索标题，多词空格分隔">
-                    </div>
-                    <div class="toolbar-row">
                         <div class="platform-tabs" id="platformTabs">
                             <button class="plat-tab active" data-plat="all" onclick="switchPlatTab(this)">全部</button>
                             <button class="plat-tab" data-plat="pc" onclick="switchPlatTab(this)">PC</button>
                             <button class="plat-tab" data-plat="pc_android" onclick="switchPlatTab(this)">PC+安卓</button>
                             <button class="plat-tab" data-plat="android" onclick="switchPlatTab(this)">安卓</button>
                         </div>
-                        <span class="spacer"></span>
                         <button class="btn btn-sm btn-primary" id="exportFilteredBtn" title="按当前来源/平台/搜索条件导出全部匹配帖子（不只当前页）">导出当前筛选</button>
+                        <span class="result-count">共 <strong id="resultCount">0</strong> 条</span>
                     </div>
                 </div>
-
                 <div class="batch-banner hidden" id="batchBanner">
                     <span>正在查看 <strong>批次 #<span id="batchBannerId"></span></strong> 的数据（来自历史记录 → 查看数据）</span>
                     <button class="btn btn-sm" onclick="exitBatchView()">退出批次查看，显示全部数据</button>
+                </div>
+                <div class="batch-bar" id="batchBar">
+                    <label class="checkbox-label"><input type="checkbox" id="selectAll"> 全选</label>
+                    <span class="selected-count">已选 <strong id="selectedCount">0</strong> 条</span>
+                    <button class="btn btn-sm btn-danger" id="batchDeleteBtn">批量删除</button>
+                    <button class="btn btn-sm" id="batchExportBtn">导出选中</button>
                 </div>
                 <div class="sticky-date-bar" id="stickyDateBar">
                     <span class="sticky-label">爬取时间</span>
@@ -171,24 +213,22 @@
                 <div class="panel-header">
                     <h2>历史记录</h2>
                 </div>
-                <div class="table-wrap">
-                    <table class="history-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th class="col-type">类型</th>
-                                <th>站点</th>
-                                <th>状态</th>
-                                <th>成功</th>
-                                <th class="col-skipped">跳过</th>
-                                <th class="col-error">失败</th>
-                                <th>时间</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="historyBody"></tbody>
-                    </table>
-                </div>
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>类型</th>
+                            <th>站点</th>
+                            <th>状态</th>
+                            <th>成功</th>
+                            <th>跳过</th>
+                            <th>失败</th>
+                            <th>时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
             </div>
 
             <!-- 导出文件面板 -->
@@ -199,7 +239,7 @@
                 <div class="export-stats">
                     <p>当前数据库共有 <strong id="exportTotal">0</strong> 条记录</p>
                 </div>
-
+                
                 <!-- 按批次导出 -->
                 <div class="export-section">
                     <h3>按爬取批次导出</h3>
@@ -208,28 +248,37 @@
                     </div>
                 </div>
 
+                <!-- 批次管理 -->
+                <div class="export-section">
+                    <h3>按爬取批次删除</h3>
+                    <p class="help-text">删除该批次爬到的全部帖子（含图片），任务历史一并清除，无法恢复。</p>
+                    <div id="batchDeleteList" class="batch-list">
+                        <p class="loading-text">加载中...</p>
+                    </div>
+                </div>
+                
                 <!-- 全量导出 -->
                 <div class="export-section">
                     <h3>全量导出</h3>
                     <div class="export-cards">
                         <div class="export-card">
-                            <div class="export-icon">仅 PC 平台</div>
+                            <div class="export-icon">PC</div>
                             <h3>PC下载.zip</h3>
-                            <p>只含 PC 平台的游戏资源（含图片）</p>
+                            <p>仅包含PC平台的游戏资源（含图片）</p>
                             <div class="export-count"><strong id="countPc">0</strong> 条</div>
                             <button class="btn btn-primary" onclick="doExport('pc')">下载 PC下载.zip</button>
                         </div>
                         <div class="export-card">
-                            <div class="export-icon">同时支持 PC 与安卓</div>
+                            <div class="export-icon">PC+安卓</div>
                             <h3>PC+安卓下载.zip</h3>
                             <p>只含同时支持 PC 与安卓的资源（含图片）</p>
                             <div class="export-count"><strong id="countMixed">0</strong> 条</div>
                             <button class="btn btn-primary" onclick="doExport('mixed')">下载 PC+安卓下载.zip</button>
                         </div>
                         <div class="export-card">
-                            <div class="export-icon">仅安卓平台</div>
+                            <div class="export-icon">安卓</div>
                             <h3>安卓下载.zip</h3>
-                            <p>只含安卓版的游戏资源（含图片）</p>
+                            <p>只有安卓版的游戏资源（含图片）</p>
                             <div class="export-count"><strong id="countAndroid">0</strong> 条</div>
                             <button class="btn btn-primary" onclick="doExport('android')">下载 安卓下载.zip</button>
                         </div>
@@ -242,39 +291,14 @@
                 <div class="panel-header">
                     <h2>数据管理</h2>
                 </div>
-
-                <div class="maintenance-row">
-                    <button class="btn" id="redownloadBtn" onclick="redownloadImages()">重新下载图片</button>
-                    <span class="help-text" style="margin:0">把远程图片补下载到本地，用于离线浏览和导出。</span>
+                <p class="help-text">清理不再使用的数据释放磁盘空间，操作不可恢复。</p>
+                <div id="cleanupInfo" class="cleanup-list">
+                    <p class="loading-text">加载中...</p>
                 </div>
-
-                <div class="form-group">
-                    <label>按爬取批次删除</label>
-                    <p class="help-text">删除某个批次爬到的全部帖子（含图片），任务历史一并清除，无法恢复。</p>
-                    <div id="batchDeleteList" class="batch-list">
-                        <p class="loading-text">加载中...</p>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>清理不再使用的数据</label>
-                    <p class="help-text">释放磁盘空间，操作不可恢复。</p>
-                    <div id="cleanupInfo" class="cleanup-list">
-                        <p class="loading-text">加载中...</p>
-                    </div>
-                    <button class="btn btn-danger" id="cleanupBtn" onclick="doCleanup()">执行清理</button>
-                </div>
+                <button class="btn btn-danger" id="cleanupBtn" onclick="doCleanup()">执行清理</button>
             </div>
         </section>
     </main>
-
-    <!-- 批量选择条：选中卡片后从底部浮出 -->
-    <div class="batch-bar" id="batchBar">
-        <label class="checkbox-label"><input type="checkbox" id="selectAll"> 全选</label>
-        <span class="selected-count">已选 <strong id="selectedCount">0</strong> 条</span>
-        <button class="btn btn-sm" id="batchExportBtn">导出选中</button>
-        <button class="btn btn-sm btn-danger" id="batchDeleteBtn">批量删除</button>
-    </div>
 
     <script src="/static/app.js"></script>
 </body>

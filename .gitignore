@@ -11,6 +11,18 @@ acg_crawler/data/*.db-shm
 acg_crawler/images/
 acg_crawler/output/
 
+# 数据库备份与运行日志（体积大：backups/ 约 558MB，单文件超 GitHub 100MB 上限）
+acg_crawler/data/backups/
+acg_crawler/data/*.bak*
+acg_crawler/data/*.pre-multi
+acg_crawler/logs/
+
+# Agent / 工具本地目录
+.workbuddy-ai/
+.freebuff/
+.ohmyagent/
+.git_broken/
+
 # 敏感配置
 acg_crawler/.env
 *.env
@@ -27,3 +39,4 @@ PC+安卓下载 (1)/
 # 系统文件
 .DS_Store
 Thumbs.db
+nul
