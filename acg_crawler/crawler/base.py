@@ -7,9 +7,12 @@ from bs4 import BeautifulSoup
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 验证页特征（状态码200但内容是验证/登录页）
+# 验证页特征（内容含这些词就判为验证/登录页）
+# 注：sgcaptcha 是二狗ACG 用的 CDN 验证码路径（/.well-known/sgcaptcha/），
+#     它的验证页返回 HTTP 202 且正文只有 168 字节，曾经因此逃过检测被静默吞掉。
 VERIFY_PAGE_HINTS = ["cloudflare", "captcha", "verify", "just a moment",
-                     "请完成验证", "访问受限", "登录后查看", "人机验证"]
+                     "请完成验证", "访问受限", "登录后查看", "人机验证",
+                     "sgcaptcha"]
 
 class BaseCrawler(ABC):
     """爬虫基类"""
@@ -86,11 +89,22 @@ class BaseCrawler(ABC):
             self._paused_until = 0.0
 
     def _is_verify_page(self, resp):
-        """检测状态码200的验证页/异常空页面"""
+        """检测验证页 / 异常空页面。
+
+        覆盖两类：
+          - 状态码 200 的 HTML 验证页
+          - 状态码 202 的 CDN 验证挑战页（如二狗ACG 的 SG-Captcha，
+            返回 202 + 168 字节空壳，早期只看 200 会漏掉）
+        """
+        text_head = resp.text[:3000].lower()
+
+        # 202 是 CDN 验证挑战的典型状态码（SG-Captcha 等）
+        if resp.status_code == 202:
+            return True
+
         if resp.status_code != 200:
             return False
-        text = resp.text[:3000].lower()
-        if any(hint in text for hint in VERIFY_PAGE_HINTS):
+        if any(hint in text_head for hint in VERIFY_PAGE_HINTS):
             return True
         # 页面过短且无实质内容
         if len(resp.text) < 200:
