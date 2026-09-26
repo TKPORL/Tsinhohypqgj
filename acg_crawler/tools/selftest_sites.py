@@ -21,7 +21,9 @@ import traceback
 # 保证能 import 到项目模块
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-sys.path.insert(0, ROOT)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+os.chdir(ROOT)   # 有些模块按相对路径找东西
 
 import requests  # noqa: E402
 
@@ -55,9 +57,9 @@ def is_placeholder(v):
     return ("your_" in low) or low in ("", "xxx", "none", "null")
 
 
-def check_kungal():
+def check_kungal(session=None):
     """鲲Galgame —— 重点验证：不登录能不能拿到下载链接"""
-    s = requests.Session()
+    s = session or requests.Session()
     s.headers.update(UA)
     lines = []
 
@@ -90,17 +92,22 @@ def check_kungal():
     return True, "匿名可爬，下载链接可获取", lines
 
 
-def check_simple(url, name, ua=None):
-    """通用站点：能不能拿到 HTML。ua 不传就用默认。"""
+def check_simple(url, name, ua=None, session=None):
+    """通用站点：能不能拿到 HTML。ua 不传就用默认；session 可带代理。"""
     headers = dict(UA)
     if ua:
         headers["User-Agent"] = ua
+    sess = session or requests
     try:
-        r = requests.get(url, headers=headers, timeout=25)
+        r = sess.get(url, headers=headers, timeout=30)
         ok = r.status_code == 200 and len(r.text) > 500
         extra = ""
-        if r.status_code == 403:
+        if r.status_code == 202 and "sgcaptcha" in r.text.lower():
+            extra = "  ← 触发站点验证码（多半是没走代理）"
+        elif r.status_code == 403:
             extra = "  ← 403 多半是 UA 被拦，不是站点挂了"
+        elif r.status_code == 429:
+            extra = "  ← 429 限流，不是站点挂了"
         return ok, f"HTTP {r.status_code}, {len(r.text)} 字节{extra}"
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
@@ -119,6 +126,43 @@ def main():
         "KUNGAL_COOKIE": env.get("KUNGAL_COOKIE", ""),
     }
 
+    # 读 config.yaml 的代理设置 —— 必须和工具行为一致，否则测试结果不可信
+    proxy_session = None
+    proxy_desc = "未启用"
+    try:
+        import yaml
+        cfg_path = os.path.join(ROOT, "config.yaml")
+        with io.open(cfg_path, encoding="utf-8") as f:
+            ycfg = yaml.safe_load(f) or {}
+        pcfg = ycfg.get("proxy", {}) or {}
+        if pcfg.get("enabled"):
+            purl = pcfg.get("http", "")
+            import socket
+            from urllib.parse import urlparse
+            u = urlparse(purl)
+            sk = socket.socket()
+            sk.settimeout(1.5)
+            reachable = False
+            try:
+                sk.connect((u.hostname or "127.0.0.1", u.port or 7890))
+                reachable = True
+            except Exception:
+                pass
+            finally:
+                sk.close()
+            if reachable:
+                proxy_session = requests.Session()
+                proxy_session.proxies = {"http": purl, "https": pcfg.get("https", purl)}
+                proxy_desc = f"已启用 {purl}（可达）"
+            else:
+                proxy_desc = f"配置了 {purl} 但不可达 → 退回直连"
+    except Exception as e:
+        proxy_desc = f"读取失败（{e}）→ 按直连处理"
+
+    print("【代理状态】（取自 config.yaml，和工具实际行为一致）")
+    print(f"  {proxy_desc}")
+    print()
+
     print("【.env 凭据状态】（只看是否已填真实值）")
     for k, v in env_keys.items():
         filled = not is_placeholder(v)
@@ -132,7 +176,7 @@ def main():
     # 鲲Galgame —— 特殊处理，要验证下载链接
     print("  ▸ 鲲Galgame (kungal.com)")
     try:
-        ok, why, detail = check_kungal()
+        ok, why, detail = check_kungal(session=proxy_session)
         for line in detail:
             print(line)
     except Exception as e:
@@ -154,23 +198,36 @@ def main():
     for name, mod, url, ua in simple:
         print(f"  ▸ {name} ({mod})")
         try:
-            ok, why = check_simple(url, name, ua)
+            ok, why = check_simple(url, name, ua, session=proxy_session)
         except Exception as e:
             ok, why = False, f"{type(e).__name__}: {e}"
         results[name] = (ok, why, None)
         print(f"    => {'✅ 可用' if ok else '❌ 不可用'} — {why}")
         print()
 
-    # 萌幻ACG —— 看凭据
-    print("  ▸ 萌幻ACG (acgrx) —— 这个站需要登录")
-    acgrx_ok = not is_placeholder(env.get("ACGRX_EMAIL", "")) and \
-               not is_placeholder(env.get("ACGRX_PASSWORD", ""))
-    if acgrx_ok:
-        print("    .env 凭据已填 → 应该可用（未实跑登录，避免触发风控）")
-        results["萌幻ACG"] = (True, "凭据已填", None)
-    else:
-        print("    .env 凭据未填 → 无法登录，这个站抓不了")
-        results["萌幻ACG"] = (False, "缺少 ACGRX_EMAIL / ACGRX_PASSWORD", None)
+    # 萌幻ACG —— 真的跑一次登录，不只看凭据
+    print("  ▸ 萌幻ACG (bbs4.acgrx.com) —— 唯一需要登录的站")
+    try:
+        from crawler.acgrx import ACGRXCrawler
+        c = ACGRXCrawler({"acgrx": {
+            "email": env.get("ACGRX_EMAIL", ""),
+            "password": env.get("ACGRX_PASSWORD", ""),
+        }})
+        has_cookie = len(c.session.cookies) > 0
+        print(f"    cookie 数  {len(c.session.cookies)}")
+        if has_cookie:
+            items = c.get_list_page(1)
+            pages = c.get_total_pages()
+            print(f"    列表页条数  {len(items)}")
+            print(f"    总页数      {pages}")
+            ok = len(items) > 0
+            why = f"登录成功，抓到 {len(items)} 条，共 {pages} 页" if ok else "登录了但列表为空"
+        else:
+            ok, why = False, "登录失败，未拿到 cookie"
+    except Exception as e:
+        ok, why = False, f"{type(e).__name__}: {e}"
+    results["萌幻ACG"] = (ok, why, None)
+    print(f"    => {'✅ 可用' if ok else '❌ 不可用'} — {why}")
     print()
 
     # 汇总
