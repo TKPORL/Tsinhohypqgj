@@ -187,6 +187,68 @@ def _strip_html(text):
     return text
 
 
+def _flatten_res_title(t):
+    """把资源自带标题拆成一组"独立括号"，避免拼装时套娃。
+
+    站点资源的 title 字段常见形态（本身已带括号）：
+        '【PC】简体中文'            → 拆成 ['PC', '简体中文']
+        '【PC/盖世/Winlator】附全CG存档' → 拆成 ['PC/盖世/Winlator', '附全CG存档']
+        '【PC/KR/盖世/Winlator】附全CG存档' → 拆成 ['PC/KR/盖世/Winlator', '附全CG存档']
+        '【PC】附全CG存档+特典'      → 拆成 ['PC', '附全CG存档+特典']
+        '【v0.7.0-p版本，已更新第九章】' → 拆成 ['v0.7.0-p版本，已更新第九章']
+        '【里面有安卓模拟器】'        → 拆成 ['里面有安卓模拟器']
+
+    返回括号内容列表；拼装方只要 `''.join('【%s】' % x for x in ...)` 即可，
+    不会出现 `【【…】…】` 的套娃（用户 2026-09-26）。
+    """
+    if not t:
+        return []
+    t = _strip_html(t).strip()
+    out = []
+    # 逐个抽走【…】（允许内层再嵌套一层）
+    i = 0
+    buf = []
+    while i < len(t):
+        ch = t[i]
+        if ch == "【":
+            depth = 1
+            j = i + 1
+            while j < len(t) and depth:
+                if t[j] == "【":
+                    depth += 1
+                elif t[j] == "】":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            inner = t[i + 1:j]
+            before = "".join(buf).strip()
+            if before:
+                out.append(before)
+                buf = []
+            # 内层若还含【】，递归拆
+            if "【" in inner:
+                out.extend(_flatten_res_title(inner))
+            else:
+                inner = inner.strip()
+                if inner:
+                    out.append(inner)
+            i = j + 1
+        else:
+            buf.append(ch)
+            i += 1
+    tail = "".join(buf).strip()
+    if tail:
+        out.append(tail)
+    # 去重 + 过滤空括号 + 过滤纯噪声
+    seen = []
+    for x in out:
+        x = x.strip()
+        if x and x not in seen and x not in ("】", "【"):
+            seen.append(x)
+    return seen
+
+
 def _doc_to_text(node):
     """把新 API 的 slate 富文本文档（{object: document/paragraph/text, children: [...]}）转成纯文本"""
     if isinstance(node, str):
@@ -693,12 +755,13 @@ class KungalCrawler(BaseCrawler):
         platform, platform_label = self._platform_label(plat_union)
 
         # 标题：只留平台（各网盘体积写在备注里的"网盘大小"行，用户 2026-09-23 确认）
-        # 资源自带标签（如【PC/盖世/Winator】附全CG存档+特典）拼在标题后（用户 2026-09-24，同其他站风格）
+        # 资源自带标签（如【PC/盖世/Winator】附全CG存档+特典）拆成独立括号拼在标题后
+        # （用户 2026-09-24 同其他站风格；2026-09-26 拆平套娃括号）
         res_titles = []
         for res in selected:
-            t = (res.get("title") or "").strip()
-            if t and t not in res_titles:
-                res_titles.append(t)
+            for t in _flatten_res_title(res.get("title") or ""):
+                if t not in res_titles:
+                    res_titles.append(t)
         title = f"{name} 【{platform_label}】" + "".join(f"【{t}】" for t in res_titles)
 
         # 下载项 + 主字段：一条链接只出一个按钮（用户 2026-09-24：

@@ -14,4 +14,4 @@ Thumbs.db
 终端完整内容.txt
 
 # 无头浏览器截图（体积大，不入库）
-acg_crawler/_dev/_shots/
+_dev/_shots/
