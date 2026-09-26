@@ -773,6 +773,16 @@ select { cursor: pointer; }
 .link-baidu:hover { background: var(--accent); color: var(--on-accent); }
 .link-source { border-color: var(--border); color: var(--text-muted); }
 .link-source:hover { background: var(--bg-card-hover); border-color: var(--border-strong); color: var(--text-primary); }
+/* 解压码 / 作弊码按钮：跟链接按钮同一行，用虚线边框区分"这是可复制的码" */
+.btn-code {
+    cursor: pointer;
+    font-family: var(--font-ui);
+    background: var(--chip-bg);
+    border: 1px dashed var(--accent-line);
+    color: var(--accent);
+}
+.btn-code:hover { background: var(--accent); border-color: var(--accent); border-style: solid; color: var(--on-accent); }
+.btn-code.copied { background: var(--accent); border-color: var(--accent); border-style: solid; color: var(--on-accent); }
 
 .card-footer { margin-top: auto; padding: 10px var(--space-16); background: var(--bg-inset); border-top: 1px solid var(--border); }
 .footer-left { display: flex; gap: var(--space-8); flex-wrap: wrap; }

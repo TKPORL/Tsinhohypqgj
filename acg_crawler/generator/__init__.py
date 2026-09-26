@@ -195,6 +195,16 @@ body {{
 .link-btn:hover {{ background: var(--accent); border-color: var(--accent); color: var(--on-accent); }}
 .link-source {{ border-color: var(--border); color: var(--text-muted); }}
 .link-source:hover {{ background: var(--bg-card-hover); border-color: var(--border-strong); color: var(--text-primary); }}
+/* 解压码 / 作弊码按钮：跟链接按钮同一行，虚线边框表示"这是可复制的码" */
+.btn-code {{
+    cursor: pointer;
+    font-family: var(--font-ui);
+    background: var(--chip-bg);
+    border: 1px dashed var(--accent-line);
+    color: var(--accent);
+}}
+.btn-code:hover {{ background: var(--accent); border-color: var(--accent); border-style: solid; color: var(--on-accent); }}
+.btn-code.copied {{ background: var(--accent); border-color: var(--accent); border-style: solid; color: var(--on-accent); }}
 .card-footer {{
     margin-top: auto;
     padding: 10px 16px;
@@ -584,20 +594,20 @@ def generate_html(posts, title, filename):
                 code = post.get("baidu_code", "")
                 links.append(f'<a href="{post["baidu_link"]}" class="link-btn link-baidu" target="_blank">百度网盘{(" ("+code+")") if code else ""}</a>')
         links.append(f'<a href="{post.get("source_url", "#")}" class="link-btn link-source" target="_blank">原帖</a>')
-        links_html = "\n".join(links)
 
-        # 底部
-        footer = ""
-        parts = []
+        # 解压码 / 作弊码按钮：紧跟「百度网盘」「原帖」同一行，
+        # 一眼能看到、顺手点（用户 2026-09-26：原来在卡片最底部不好找）
         if post.get("unzip_code"):
-            # 解压码文本由爬虫端生成完整格式（如"PC解压码:xxx"），这里不再加前缀
+            # 解压码文本由爬虫端生成完整格式（如"解压码007721"），这里不再加前缀
             _uc = html_lib.escape(str(post["unzip_code"]), quote=True)
-            parts.append(f'<button class="copy-text" data-copy="{_uc}" title="{_uc}" onclick="copyText(this)">解压码</button>')
+            links.append(f'<button class="link-btn btn-code" data-copy="{_uc}" title="{_uc}" onclick="copyText(this)">解压码</button>')
         if post.get("cheat_code"):
             _cc = html_lib.escape(str(post["cheat_code"]), quote=True)
-            parts.append(f'<button class="copy-text" data-copy="作弊码：{_cc}" title="作弊码：{_cc}" onclick="copyText(this)">作弊码</button>')
-        if parts:
-            footer = f'<div class="card-footer">{"&nbsp;&nbsp;".join(parts)}</div>'
+            links.append(f'<button class="link-btn btn-code" data-copy="作弊码：{_cc}" title="作弊码：{_cc}" onclick="copyText(this)">作弊码</button>')
+        links_html = "\n".join(links)
+
+        # 底部（已无内容，保留结构位以便后续扩展）
+        footer = ""
 
         # 备注（发布者说明）：折叠 3 行，超出才给展开按钮；整块点击复制
         # 仅鲲Galgame 需要（用户为主的站点才有发布者备注）；其余四站为管理员整理站，

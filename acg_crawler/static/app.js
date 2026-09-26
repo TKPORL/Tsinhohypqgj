@@ -787,20 +787,17 @@ document.addEventListener("DOMContentLoaded", function() {
                 linksHtml += '<a href="' + post.baidu_link + '" class="link-btn link-baidu" target="_blank">百度网盘' + (post.baidu_code ? ' ('+post.baidu_code+')' : '') + '</a>';
             }
         }
+        // 解压码 / 作弊码按钮：与「百度网盘」「原帖」放在同一行，
+        // 方便一眼看到、顺手点（用户 2026-09-26：原来在卡片最底部太靠下）
+        if (post.unzip_code) {
+            linksHtml += '<button class="link-btn btn-code" data-copy="' + escapeHtml(post.unzip_code) + '" title="' + escapeHtml(post.unzip_code) + '" onclick="copyText(this)">解压码</button>';
+        }
+        if (post.cheat_code) {
+            linksHtml += '<button class="link-btn btn-code" data-copy="作弊码：' + escapeHtml(post.cheat_code) + '" title="作弊码：' + escapeHtml(post.cheat_code) + '" onclick="copyText(this)">作弊码</button>';
+        }
         linksHtml += '<a href="' + post.source_url + '" class="link-btn link-source" target="_blank">原帖</a>';
 
         var footerHtml = "";
-        if (post.unzip_code || post.cheat_code) {
-            footerHtml = '<div class="card-footer"><div class="footer-left">';
-            if (post.unzip_code) {
-                // 解压码文本由爬虫端生成完整格式（如"PC解压码:xxx"），前端不再加前缀
-                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="' + escapeHtml(post.unzip_code) + '" title="' + escapeHtml(post.unzip_code) + '" onclick="copyText(this)">解压码</button>';
-            }
-            if (post.cheat_code) {
-                footerHtml += '<button class="btn btn-sm btn-unzip" data-copy="作弊码：' + escapeHtml(post.cheat_code) + '" title="作弊码：' + escapeHtml(post.cheat_code) + '" onclick="copyText(this)">作弊码</button>';
-            }
-            footerHtml += '</div></div>';
-        }
 
         // 备注（发布者说明）：折叠 3 行，超出才给展开按钮；整块可点击复制
         // 仅鲲Galgame 需要；其余四站是管理员整理站，content 为游戏简介，不算备注（2026-09-23 用户确认）

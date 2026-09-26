@@ -3,7 +3,8 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets, fix_title_cloud_name
+from parser import (extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code,
+                    normalize_title, oversize_reason)
 from parser.image_handler import download_images
 
 class ACGYXJCrawler(BaseCrawler):
@@ -133,9 +134,6 @@ class ACGYXJCrawler(BaseCrawler):
         title_el = soup.select_one("h1")
         title = title_el.get_text(strip=True) if title_el else ""
         title = self._format_title(title, category)
-        title = fix_title_slash(title)
-        title = fix_title_tags(title)
-        title = fix_title_brackets(title)
 
         content_el = soup.select_one("div.single-content")
         content = content_el.get_text(separator="\n", strip=True) if content_el else ""
@@ -171,10 +169,22 @@ class ACGYXJCrawler(BaseCrawler):
             links = extract_links_multi(full_text)
 
         cloud_name = extract_cloud_name(content)
-        # 修正标题里的云名：把 PCC/AZC 前缀统一为 C
-        title = fix_title_cloud_name(title)
         if cloud_name and cloud_name not in title:
             title = f"{title} 【{cloud_name}】"
+
+        # 标题归一化总入口（2026-09-26）
+        title = normalize_title(title)
+
+        # 体积过滤：超过 10G 不入库
+        reason = oversize_reason(title)
+        if reason:
+            return {
+                "source": self.site_name,
+                "source_id": url.split("/")[-1].replace(".html", ""),
+                "source_url": url, "title": title, "platform": "unknown", "content": "",
+                "images": "[]", "original_images": "[]", "post_date": "",
+                "skip_reason": reason,
+            }
 
         cheat_code = extract_cheat_code(title, content)
 

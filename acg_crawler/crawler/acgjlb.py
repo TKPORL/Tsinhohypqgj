@@ -3,7 +3,8 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets, fix_title_cloud_name
+from parser import (extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code,
+                    normalize_title, oversize_reason, size_to_gb, MAX_SIZE_GB)
 from parser.image_handler import download_images
 
 class ACGJLBCrawler(BaseCrawler):
@@ -69,69 +70,10 @@ class ACGJLBCrawler(BaseCrawler):
         soup = self._soup(url)
 
         # 标题 - ACG俱乐部使用 h1.article-title
+        # 站点原文形如 "15395[RPG/百合]游戏名 v1.0 AI汉化[PC+安卓]"：
+        # 开头的帖子编号、方括号标签、末尾编号统一交给 normalize_title 处理
         title_el = soup.select_one("h1.article-title")
         title = title_el.get_text(strip=True) if title_el else ""
-
-        # 标题开头的数字移到末尾（如 16495[RPG/...] → [RPG/...] 16495）
-        title_match = re.match(r'^(\d{4,6})([\[【].+)', title)
-        if title_match:
-            num = title_match.group(1)
-            rest = title_match.group(2)
-            title = f"{rest} {num}"
-
-        # 标题末尾]后面的数字移到标题区后面（如 ...joi]5286 1648 → ...joi] 5286 1648）
-        end_match = re.search(r'[]】](\d[\d\s]*\d)\s*$', title)
-        if end_match:
-            nums = end_match.group(1).strip()
-            title = title[:end_match.start(1)].rstrip() + " " + nums
-
-        # 修复标题：【PC+安卓/9.35G/更新】→ 【PC+安卓 9.35G】，更新移到开头标签
-        def fix_size_bracket(m):
-            platform = m.group(1)
-            size = m.group(2)
-            extra = m.group(3) or ""
-            # 额外信息（如更新）移到标题其他位置，在这里先存着
-            return f'【{platform} {size}】'
-        
-        # 提取【】里的额外信息
-        size_match = re.search(r'【([^】]*(?:PC|安卓)[^】]*?)】', title)
-        if size_match:
-            bracket_content = size_match.group(1)
-            # 把/换成空格，提取出平台和大小
-            parts = bracket_content.split('/')
-            platform_size = []
-            extra_tags = []
-            for p in parts:
-                p = p.strip()
-                if re.match(r'^[\d\.]+[GMgm]', p):
-                    platform_size.append(p)
-                elif p in ('PC', '安卓', 'PC+安卓', 'android'):
-                    platform_size.append(p)
-                elif p in ('更新', '汉化', '官中'):
-                    extra_tags.append(p)
-                else:
-                    platform_size.append(p)
-            
-            if extra_tags:
-                # 把"更新"等移到开头的[]标签里
-                tag_match = re.match(r'([【\[][^\]】]+[】\]])', title)
-                if tag_match:
-                    tag_content = tag_match.group(1)
-                    for tag in extra_tags:
-                        if tag not in tag_content:
-                            # 统一用】结尾
-                            tag_content = tag_content.rstrip('】]') + '/' + tag + '】'
-                    title = tag_content + title[tag_match.end():]
-                
-                # 重建【】内容（只保留平台和大小）
-                new_bracket = '【' + ' '.join(platform_size) + '】'
-                title = title[:size_match.start()] + new_bracket + title[size_match.end():]
-        
-        # 修复斜杠：【PC+安卓/9.35G】→【PC+安卓 9.35G】
-        title = re.sub(r'【(PC\+安卓|PC|安卓)/(\d+\.?\d*[GMgm][Bb]?)】', r'【\1 \2】', title)
-        title = fix_title_slash(title)
-        title = fix_title_tags(title)
-        title = fix_title_brackets(title)
 
         # 内容 - ACG俱乐部使用 div.wp-posts-content
         content_el = soup.select_one("div.wp-posts-content")
@@ -173,16 +115,29 @@ class ACGJLBCrawler(BaseCrawler):
 
         # 提取下载名追加到标题
         cloud_name = extract_cloud_name(content)
-        # 修正标题里的云名：把 PCC/AZC 前缀统一为 C
-        title = fix_title_cloud_name(title)
         if cloud_name and cloud_name not in title:
             title = f"{title} 【{cloud_name}】"
+
+        # 标题归一化总入口（2026-09-26）：
+        #   标签归拢进开头【】、平台/大小括号合并、更新挪位置、云名去前缀、尾部数字只留最新
+        title = normalize_title(title)
+
+        # 体积过滤：超过 10G 的游戏整条不入库（用户 2026-09-26 要求）
+        reason = oversize_reason(title)
+        if reason:
+            return {
+                "source": self.site_name,
+                "source_id": url.split("/")[-1].replace(".html", "").split("?")[0],
+                "source_url": url, "title": title, "platform": "unknown", "content": "",
+                "images": "[]", "original_images": "[]", "post_date": post_date,
+                "skip_reason": reason,
+            }
 
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)
 
         # 提取解压码（ACG俱乐部固定为007721）
-        unzip_code = "007721"
+        unzip_code = "解压码007721"
 
         # 判断平台 - 优先从分类标签判断，正文标签兜底
         platform = "unknown"

@@ -12,6 +12,7 @@ from crawler.kungal import KungalCrawler
 from crawler.ergouacg import ErGouACGCrawler
 from database import insert_post, create_task, update_task, delete_task, delete_posts_by_task, get_conn
 from config import get_speed_profile, get_site_detail_workers
+from parser import oversize_reason as _oversize_reason
 
 CRAWLERS = {
     "acgyxj": ACGYXJCrawler,
@@ -118,6 +119,13 @@ class CrawlerEngine:
             if not post.get("title", "").strip():
                 return "skipped"
             if post.get("platform") == "unknown":
+                return "skipped"
+            # 体积兜底过滤（用户 2026-09-26：10G 以内才要）：
+            # 各站点已在 parse_detail 里过滤过，这里是最后一道闸，
+            # 防止某个站漏了体积字段导致超大资源混进来
+            if not post.get("skip_reason") and _oversize_reason(post.get("title") or ""):
+                post["skip_reason"] = _oversize_reason(post.get("title") or "")
+            if post.get("skip_reason"):
                 return "skipped"
             has_baidu = bool(post.get("baidu_link"))
             # 移动云盘 2026-09-24 起下线，只认百度（兼容 v4 多链接：items 含 baidu 也算）

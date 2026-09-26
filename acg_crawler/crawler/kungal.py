@@ -28,34 +28,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# 单个体积上限（GB）：超过则整个游戏跳过不入库
+# 2026-09-26 起上限与其它站统一走 parser 里的公共常量，避免两套口径
 from crawler.base import BaseCrawler
+from parser import MAX_SIZE_GB, size_to_gb as _size_to_gb
 from parser.image_handler import download_images
-
-# provider_names 里出现这些词就归入对应网盘
-_BAIDU_HINTS = ("百度",)
-_MOBILE_HINTS = ("彩云", "移动")
-
-DATE_PATTERN = re.compile(r"(20\d{2})-(\d{2})-(\d{2})")
-# 备注里"解压密码/解压码"这类行（密码已单独成字段，不需要在正文重复）
-_PASSWORD_LINE = re.compile(r"(解压)?(密码|暗号|pass\s*word|pwd)", re.IGNORECASE)
-_NUMBERED_LINE = re.compile(r"^\s*(\d+)\s*[.、)]\s*")
-
-# 单个体积上限（GB）：超过则整个游戏跳过不入库（用户 2026-09-23 要求）
-MAX_SIZE_GB = 10.0
-# 从 "10.8 GB" / "900 MB" / "1.15GB" 这类文本里取数值+单位
-_SIZE_RE = re.compile(r"([\d.]+)\s*(TB|GB|MB|KB)", re.IGNORECASE)
-_UNIT_GB = {"TB": 1024.0, "GB": 1.0, "MB": 1 / 1024.0, "KB": 1 / 1024.0 / 1024.0}
-
-
-def _size_to_gb(text):
-    """"10.8 GB" → 10.8；解析不出来返回 None。"""
-    m = _SIZE_RE.search(text or "")
-    if not m:
-        return None
-    try:
-        return float(m.group(1)) * _UNIT_GB[m.group(2).upper()]
-    except (ValueError, KeyError):
-        return None
 
 # ---------- 引流内容识别（通用规则，不依赖具体句子） ----------
 # 思路：发布者的"引流"本质上就是三种东西 —— ①引流到别的网盘/外部站点
@@ -558,11 +535,13 @@ class KungalCrawler(BaseCrawler):
 
     @staticmethod
     def _build_unzip_code(details):
-        """解压密码文本（前端直接复制这段，不再加前缀，用户 2026-09-24）
+        """解压密码文本（前端直接复制这段，不再加前缀）
 
         details 元素为 (资源, 下载详情)：
-        - 只有一条密码（或全部相同）→ "解压码:open"
-        - 多条密码不同（凑出的 PC+安卓两条链接）→ "PC解压码:open ｜ 安卓解压码:afggacg"
+        - 只有一条密码（或全部相同）→ "解压码open"
+        - 多条密码不同（凑出的 PC+安卓两条链接）→ "PC解压码open ｜ 安卓解压码afggacg"
+
+        2026-09-26 用户确认：全站统一「解压码xxx」无冒号格式，去掉原来的英文冒号。
         """
         entries = []
         for res, detail in details:
@@ -573,15 +552,15 @@ class KungalCrawler(BaseCrawler):
         if not entries:
             return None
         if len(entries) == 1:
-            return f"解压码:{entries[0][1]}"
+            return f"解压码{entries[0][1]}"
         labels = []
         for plats, pw in entries:
             if plats == {"pc"}:
-                labels.append(f"PC解压码:{pw}")
+                labels.append(f"PC解压码{pw}")
             elif plats == {"android"}:
-                labels.append(f"安卓解压码:{pw}")
+                labels.append(f"安卓解压码{pw}")
             else:
-                labels.append(f"解压码:{pw}")
+                labels.append(f"解压码{pw}")
         return " ｜ ".join(labels)
 
     def _build_content(self, galgame, notes, sizes):

@@ -3,7 +3,8 @@ import json
 import re
 from pathlib import Path
 from crawler.base import BaseCrawler
-from parser import extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code, fix_title_tags, fix_title_slash, fix_title_brackets, fix_title_cloud_name
+from parser import (extract_links_multi, extract_links, extract_cloud_name, extract_cheat_code,
+                    normalize_title, oversize_reason)
 from parser.image_handler import download_images
 
 class ACGLLCrawler(BaseCrawler):
@@ -54,12 +55,6 @@ class ACGLLCrawler(BaseCrawler):
         title_el = soup.select_one("h1.article-title")
         title = title_el.get_text(strip=True) if title_el else ""
 
-        # 修复标题格式：【安卓/538M】→ 【安卓 538M】（斜杠换空格）
-        title = re.sub(r'【(PC\+安卓|PC|安卓|android)/(\d+\.?\d*[GMgm][Bb]?)】', r'【\1 \2】', title)
-        title = fix_title_slash(title)
-        title = fix_title_tags(title)
-        title = fix_title_brackets(title)
-
         # 内容 - ACG图书馆使用 div.wp-posts-content
         content_el = soup.select_one("div.wp-posts-content")
         content = content_el.get_text(separator="\n", strip=True) if content_el else ""
@@ -100,10 +95,22 @@ class ACGLLCrawler(BaseCrawler):
 
         # 提取下载名追加到标题
         cloud_name = extract_cloud_name(content)
-        # 修正标题里的云名：把 PCC/AZC 前缀统一为 C
-        title = fix_title_cloud_name(title)
         if cloud_name and cloud_name not in title:
             title = f"{title} 【{cloud_name}】"
+
+        # 标题归一化总入口（2026-09-26）
+        title = normalize_title(title)
+
+        # 体积过滤：超过 10G 不入库
+        reason = oversize_reason(title)
+        if reason:
+            return {
+                "source": self.site_name,
+                "source_id": url.split("/")[-1].replace(".html", "").split("?")[0],
+                "source_url": url, "title": title, "platform": "unknown", "content": "",
+                "images": "[]", "original_images": "[]", "post_date": post_date,
+                "skip_reason": reason,
+            }
 
         # 提取作弊码
         cheat_code = extract_cheat_code(title, content)

@@ -15,7 +15,7 @@ import random
 import time
 from bs4 import BeautifulSoup
 from crawler.base import BaseCrawler
-from parser import extract_links_multi, extract_cheat_code
+from parser import extract_links_multi, extract_cheat_code, normalize_title, oversize_reason
 from parser.image_handler import download_images
 
 # " - 二狗ACG" 后缀
@@ -203,6 +203,18 @@ class ErGouACGCrawler(BaseCrawler):
         title = rewrite_title(title_raw)
         if not title:
             title = _SITE_SUFFIX_RE.sub('', title_raw).strip()
+        # 标题归一化 + 体积过滤（2026-09-26 与其他站统一口径）
+        title = normalize_title(title)
+        reason = oversize_reason(title)
+        if reason:
+            m_id = re.search(r'[?&]p=(\d+)', url)
+            return {
+                "source": self.site_name,
+                "source_id": m_id.group(1) if m_id else url,
+                "source_url": url, "title": title, "platform": "unknown", "content": "",
+                "images": "[]", "original_images": "[]", "post_date": "",
+                "skip_reason": reason,
+            }
 
         # 正文容器
         content_el = soup.select_one("div.single-content")
@@ -253,8 +265,9 @@ class ErGouACGCrawler(BaseCrawler):
                 it["platform"] = platform
 
         # 解压密码：正文提取（防发布者改码，同 acgrx 口径），提不到用全站默认 twodog
+        # 2026-09-26 用户确认：统一「解压码xxx」无冒号
         pwd_m = re.search(r'(?:解压密码|统一解压密码|解压码|密码)[：:\s]*([A-Za-z0-9]+)', content)
-        unzip_code = f"解压码:{pwd_m.group(1) if pwd_m else 'twodog'}"
+        unzip_code = f"解压码{pwd_m.group(1) if pwd_m else 'twodog'}"
 
         # 发布日期：正文外元信息 "2026年9月22日"
         post_date = ""
